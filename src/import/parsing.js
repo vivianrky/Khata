@@ -77,19 +77,27 @@ export function guessColumn(headers, patterns) {
 // Lines that are almost never an actual transaction — statement headers,
 // running totals, page footers — but can still contain something that
 // looks like a date or amount (a year number, a balance figure) and would
-// otherwise get pulled in as a fake row.
+// otherwise get pulled in as a fake row. The second half of this list
+// (previous dues, credit/cash limits, reward points, ...) comes from a
+// real credit card statement's summary boxes — each one carries a real
+// ₹ figure with no transaction next to it, which the amount-only check
+// below would otherwise happily accept as a fake transaction.
 const SKIP_LINE_PATTERN =
-  /\b(statement period|opening balance|closing balance|available balance|total debits?|total credits?|grand total|sub[\s-]?total|brought forward|carried forward|\bb\/f\b|\bc\/f\b|page \d+|generated on|card no|a\/c no|acc(?:ount)?\s*no|account number|card number)\b/i
+  /\b(statement period|statement date|billing period|opening balance|closing balance|available balance|total debits?|total credits?|grand total|sub[\s-]?total|brought forward|carried forward|\bb\/f\b|\bc\/f\b|page \d+|generated on|card no|a\/c no|acc(?:ount)?\s*no|account number|card number|ckyc|hsn code|gstin|previous (statement )?dues?|payments?\/?\s*credits? received|purchases?\/debit|finance charges|total amount due|minimum (amount )?due|due date|credit limit|cash limit|over limit|current dues|minimum dues|past dues|reward points|points expiring|purchase indicator|domestic transactions|international transactions|transaction description|eligible for emi|convert to emi|rewards? program|bonus points|disbursed|adjusted\/lapsed)\b/i
 
 const DATE_PATTERNS = [
   /\b(\d{1,2}[/\-.]\d{1,2}[/\-.]\d{2,4})\b/,
   /\b(\d{4}-\d{1,2}-\d{1,2})\b/,
-  /\b(\d{1,2}\s+[A-Za-z]{3,9}\s+\d{2,4})\b/,
+  // "13 Aug 2026" / "13 Aug, 2026" — a comma after the month (common on
+  // statement letterheads: "Due Date 14 Sep, 2026") is tolerated so the
+  // year stays *part of* this match instead of being left for the amount
+  // scan below to mistake for a bare number.
+  /\b(\d{1,2}\s+[A-Za-z]{3,9},?\s+\d{2,4})\b/,
   // No-year fallback ("13 Aug") — tried last so a line with a real year
   // still matches that instead. The (?!\s+\d) guard stops this from eating
   // just the first two words of a "13 Aug 2026" the earlier pattern
   // somehow missed (defends against odd whitespace from OCR).
-  /\b(\d{1,2}\s+[A-Za-z]{3,9})\b(?!\s+\d)/,
+  /\b(\d{1,2}\s+[A-Za-z]{3,9})\b(?!,?\s+\d)/,
 ]
 const AMOUNT_PATTERN = /(?:₹|rs\.?|inr)?\s*(-?\(?\d[\d,]*\.\d{1,2}\)?|-?\(?\d[\d,]{2,}\)?)\s*(cr|dr)?/gi
 
@@ -104,9 +112,40 @@ export function parseStatementText(text) {
     .map((l) => l.trim())
     .filter(Boolean)
   const rows = []
+  let previousWasLabel = false
 
   for (const line of lines) {
-    if (SKIP_LINE_PATTERN.test(line)) continue
+    if (SKIP_LINE_PATTERN.test(line)) {
+      previousWasLabel = true
+      continue
+    }
+
+    // Statement summary boxes (dues, credit limit, reward points, a due
+    // date, ...) are often rendered as a label on one line and its value
+    // on the very next — the label alone matches SKIP_LINE_PATTERN above,
+    // but the bare value line has no keyword of its own to catch it. If a
+    // recognized label was *just* skipped and this line has no real words
+    // on it (no 3+ letter run — a genuine transaction always has a
+    // merchant name), treat it as that label's value rather than a
+    // transaction. A bare month abbreviation ("14 Sep, 2026", a due date's
+    // own value) doesn't count as a "real word" for this check.
+    const strippedOfMonths = line.replace(/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b/gi, '')
+    if (previousWasLabel && !/[A-Za-z]{3,}/.test(strippedOfMonths)) {
+      previousWasLabel = false
+      continue
+    }
+    previousWasLabel = false
+
+    let dateStr = ''
+    let dateSpan = null
+    for (const p of DATE_PATTERNS) {
+      const dm = line.match(p)
+      if (dm) {
+        dateStr = dm[1]
+        dateSpan = [dm.index, dm.index + dm[0].length]
+        break
+      }
+    }
 
     const amtMatches = [...line.matchAll(AMOUNT_PATTERN)].filter((m) => {
       if (!m[1] || m[1].replace(/[^\d]/g, '').length < 2) return false
@@ -116,22 +155,34 @@ export function parseStatementText(text) {
       // characters, even without an explicit "Card No" label on the line.
       const before = line.slice(Math.max(0, m.index - 6), m.index)
       if (/[Xx*]{2,}[\s-]*$/.test(before)) return false
+      // A number that's actually part of the date just matched on this
+      // line (the "2026" inside "14 Sep, 2026") isn't a separate amount.
+      if (dateSpan && m.index >= dateSpan[0] && m.index < dateSpan[1]) return false
+      // A bare multi-digit integer with no currency symbol, no decimal
+      // point, and no cr/dr suffix reads as a reference number, an ID, or
+      // a year far more often than it reads as an amount — a real amount
+      // almost always announces itself with at least one of those. This
+      // is what keeps things like a CKYC ID or a rewards-points balance
+      // from being mistaken for a transaction.
+      const hasDecimal = m[1].includes('.')
+      // The optional currency prefix is captured as part of the overall
+      // match (m[0]) itself, not text before it.
+      const hasCurrencySymbol = /[₹]|rs\.?|inr/i.test(m[0])
+      const hasCrDr = !!m[2]
+      if (!hasDecimal && !hasCurrencySymbol && !hasCrDr) return false
       return true
     })
     if (!amtMatches.length) continue
 
-    let dateStr = ''
-    for (const p of DATE_PATTERNS) {
-      const dm = line.match(p)
-      if (dm) {
-        dateStr = dm[1]
-        break
-      }
-    }
-
     const last = amtMatches[amtMatches.length - 1]
     const amount = parseAmount(last[1])
     if (isNaN(amount) || amount === 0) continue
+
+    // A "+" immediately before the amount ("+ ₹10,000.00") is how several
+    // card statements mark a payment/refund coming IN, as opposed to a
+    // purchase going out — flagged here so the caller can default it
+    // unchecked rather than count it as spend.
+    const isCredit = /\+\s*$/.test(line.slice(Math.max(0, last.index - 3), last.index))
 
     let description = line.replace(last[0], '').replace(dateStr, '').replace(/\s{2,}/g, ' ').trim()
     if (description.length < 2) description = line.slice(0, 90)
@@ -140,6 +191,7 @@ export function parseStatementText(text) {
       date: dateStr ? parseDate(dateStr) : '',
       description: description.slice(0, 120),
       amount: Math.abs(amount),
+      isCredit,
     })
   }
 

@@ -36,18 +36,42 @@ async function extractPdfText(file, password) {
   for (let i = 1; i <= doc.numPages; i++) {
     const page = await doc.getPage(i)
     const content = await page.getTextContent()
-    // Text items come back unordered w.r.t. visual lines — group by their
-    // y-position on the page to reconstruct rows before scanning for
-    // dates/amounts.
-    const lines = {}
-    for (const item of content.items) {
-      const y = Math.round(item.transform[5])
-      lines[y] = (lines[y] || '') + item.str + ' '
+
+    // Text items come back in whatever order the PDF's content stream
+    // paints them — not visual reading order — and, on statements rendered
+    // from HTML/CSS (most bank/card statement generators), columns in the
+    // "same" row routinely land a pixel or two apart in y (different font
+    // size or line-height per column). Bucketing by an *exact* rounded y,
+    // like this used to, silently splits one visual row into several
+    // fragments whenever that happens — e.g. the date lands alone on its
+    // own "line" with no amount next to it, gets dropped for having no
+    // amount, and the transaction it belonged to ends up with a blank
+    // date. Clustering by *nearby* y instead, then sorting each cluster
+    // left-to-right by x, reconstructs the row faithfully either way.
+    const Y_TOLERANCE = 3
+    const items = content.items
+      .filter((it) => it.str && it.str.trim())
+      .map((it) => ({ str: it.str, x: it.transform[4], y: it.transform[5] }))
+      .sort((a, b) => b.y - a.y)
+
+    const lines = []
+    for (const it of items) {
+      let line = lines.find((l) => Math.abs(l.y - it.y) <= Y_TOLERANCE)
+      if (!line) {
+        line = { y: it.y, items: [] }
+        lines.push(line)
+      }
+      line.items.push(it)
     }
+
     text +=
-      Object.keys(lines)
-        .sort((a, b) => b - a)
-        .map((k) => lines[k])
+      lines
+        .map((l) =>
+          l.items
+            .sort((a, b) => a.x - b.x)
+            .map((it) => it.str)
+            .join(' '),
+        )
         .join('\n') + '\n'
   }
   return text
@@ -121,11 +145,20 @@ export default function ExtractImport({ kind, categories, paidBy, onBack, onImpo
       }
       setAccountGuess(guessAccountInfo(text))
       setRows(
-        parsed.map((r) => ({
-          ...r,
-          category: suggestCategoryName(r.description) || '',
-          include: true,
-        })),
+        parsed.map((r) => {
+          // A payment/refund coming in ("+ ₹10,000.00" on a card
+          // statement), not spend going out — same treatment as the
+          // spreadsheet import's Debit/Credit column: starts unchecked and
+          // clearly marked, rather than silently inflating spend.
+          const description = r.isCredit ? `[Credit — payment/refund] ${r.description}` : r.description
+          return {
+            date: r.date,
+            description,
+            amount: r.amount,
+            category: suggestCategoryName(r.description) || '',
+            include: !r.isCredit,
+          }
+        }),
       )
       setStatus('review')
     } catch (e) {
