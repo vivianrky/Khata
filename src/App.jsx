@@ -5,11 +5,13 @@ import TransactionForm from './TransactionForm'
 import StatementImport from './StatementImport'
 import Transactions from './Transactions'
 import Rules from './Rules'
+import Budget from './Budget'
 
 const TABS = [
   { id: 'dashboard', label: 'Dashboard' },
   { id: 'add', label: 'Add / Import' },
   { id: 'transactions', label: 'Transactions' },
+  { id: 'budget', label: 'Budget' },
   { id: 'rules', label: 'Rules' },
 ]
 
@@ -97,6 +99,13 @@ function App() {
         <section className="card">
           <h2>Transactions</h2>
           <Transactions key={dataVersion} categories={categories} onChanged={refresh} />
+        </section>
+      )}
+
+      {tab === 'budget' && (
+        <section className="card">
+          <h2>Budget</h2>
+          <Budget key={dataVersion} categories={categories} />
         </section>
       )}
 

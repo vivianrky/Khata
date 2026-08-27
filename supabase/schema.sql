@@ -81,6 +81,31 @@ on conflict (keyword) do nothing;
 
 create index if not exists category_rules_keyword_idx on category_rules (keyword);
 
+-- Salary budgeting: each person sets their own monthly salary and how much
+-- of it they're allocating to each category. "person" is free text, same
+-- convention as transactions.paid_by — use the same spelling in both so the
+-- Budget tab can match your allocations against your actual spending.
+create table if not exists salaries (
+  id uuid primary key default gen_random_uuid(),
+  person text not null,
+  month date not null, -- always the 1st of the month, e.g. 2026-08-01
+  amount numeric(12, 2) not null check (amount >= 0),
+  created_at timestamptz not null default now(),
+  unique (person, month)
+);
+
+create table if not exists budget_allocations (
+  id uuid primary key default gen_random_uuid(),
+  person text not null,
+  month date not null,
+  category_id uuid not null references categories(id) on delete cascade,
+  amount numeric(12, 2) not null check (amount >= 0),
+  created_at timestamptz not null default now(),
+  unique (person, month, category_id)
+);
+
+create index if not exists budget_allocations_person_month_idx on budget_allocations (person, month);
+
 -- Row Level Security: locked down by default in Supabase. Since Khata has
 -- no login yet and is just for the two of you, this policy lets anyone
 -- holding your app's anon key (i.e. your app itself) read and write freely.
@@ -89,6 +114,8 @@ create index if not exists category_rules_keyword_idx on category_rules (keyword
 alter table categories enable row level security;
 alter table transactions enable row level security;
 alter table category_rules enable row level security;
+alter table salaries enable row level security;
+alter table budget_allocations enable row level security;
 
 drop policy if exists "anon full access" on categories;
 create policy "anon full access" on categories
@@ -100,4 +127,12 @@ create policy "anon full access" on transactions
 
 drop policy if exists "anon full access" on category_rules;
 create policy "anon full access" on category_rules
+  for all using (true) with check (true);
+
+drop policy if exists "anon full access" on salaries;
+create policy "anon full access" on salaries
+  for all using (true) with check (true);
+
+drop policy if exists "anon full access" on budget_allocations;
+create policy "anon full access" on budget_allocations
   for all using (true) with check (true);
