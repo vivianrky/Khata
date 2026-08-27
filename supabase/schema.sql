@@ -43,6 +43,44 @@ create table if not exists transactions (
 create index if not exists transactions_date_idx on transactions (transaction_date);
 create index if not exists transactions_category_idx on transactions (category_id);
 
+-- Category rules: "if the description contains this keyword, suggest this
+-- category" — used when importing a statement. Editable from the Rules tab
+-- in the app; shared between both of you like everything else here.
+create table if not exists category_rules (
+  id uuid primary key default gen_random_uuid(),
+  keyword text not null unique,
+  category_id uuid not null references categories(id) on delete cascade,
+  created_at timestamptz not null default now()
+);
+
+-- A starter set of rules for common Indian merchants/services. Add your own
+-- from the Rules tab any time — no need to touch SQL again after this.
+insert into category_rules (keyword, category_id)
+select v.keyword, c.id
+from (values
+  ('swiggy', 'Dining'), ('zomato', 'Dining'), ('dominos', 'Dining'),
+  ('mcdonald', 'Dining'), ('starbucks', 'Dining'),
+  ('bigbasket', 'Groceries'), ('blinkit', 'Groceries'), ('zepto', 'Groceries'),
+  ('dmart', 'Groceries'), ('grofers', 'Groceries'), ('more supermarket', 'Groceries'),
+  ('amazon', 'Shopping'), ('flipkart', 'Shopping'), ('myntra', 'Shopping'),
+  ('ajio', 'Shopping'), ('firstcry', 'Shopping'), ('nykaa', 'Shopping'),
+  ('uber', 'Transport'), ('ola', 'Transport'), ('rapido', 'Transport'),
+  ('petrol', 'Fuel'), ('fuel', 'Fuel'), ('indian oil', 'Fuel'),
+  ('hpcl', 'Fuel'), ('bpcl', 'Fuel'),
+  ('netflix', 'Entertainment'), ('hotstar', 'Entertainment'), ('spotify', 'Entertainment'),
+  ('prime video', 'Entertainment'), ('bookmyshow', 'Entertainment'),
+  ('airtel', 'Bills & Utilities'), ('jio', 'Bills & Utilities'), ('bsnl', 'Bills & Utilities'),
+  ('electricity', 'Bills & Utilities'), ('water bill', 'Bills & Utilities'), ('broadband', 'Bills & Utilities'),
+  ('apollo', 'Health'), ('pharmacy', 'Health'), ('hospital', 'Health'),
+  ('clinic', 'Health'), ('medical', 'Health'),
+  ('rent', 'Rent / EMI'), ('emi', 'Rent / EMI'), ('loan', 'Rent / EMI'),
+  ('atm', 'Other'), ('charges', 'Other'), ('gst', 'Other')
+) as v(keyword, category_name)
+join categories c on c.name = v.category_name
+on conflict (keyword) do nothing;
+
+create index if not exists category_rules_keyword_idx on category_rules (keyword);
+
 -- Row Level Security: locked down by default in Supabase. Since Khata has
 -- no login yet and is just for the two of you, this policy lets anyone
 -- holding your app's anon key (i.e. your app itself) read and write freely.
@@ -50,6 +88,7 @@ create index if not exists transactions_category_idx on transactions (category_i
 -- authentication later if that changes.
 alter table categories enable row level security;
 alter table transactions enable row level security;
+alter table category_rules enable row level security;
 
 drop policy if exists "anon full access" on categories;
 create policy "anon full access" on categories
@@ -57,4 +96,8 @@ create policy "anon full access" on categories
 
 drop policy if exists "anon full access" on transactions;
 create policy "anon full access" on transactions
+  for all using (true) with check (true);
+
+drop policy if exists "anon full access" on category_rules;
+create policy "anon full access" on category_rules
   for all using (true) with check (true);

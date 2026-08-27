@@ -3,14 +3,25 @@ import { supabase } from './supabaseClient'
 import Dashboard from './Dashboard'
 import TransactionForm from './TransactionForm'
 import StatementImport from './StatementImport'
+import Transactions from './Transactions'
+import Rules from './Rules'
+
+const TABS = [
+  { id: 'dashboard', label: 'Dashboard' },
+  { id: 'add', label: 'Add / Import' },
+  { id: 'transactions', label: 'Transactions' },
+  { id: 'rules', label: 'Rules' },
+]
 
 function App() {
   const [categories, setCategories] = useState([])
-  const [transactions, setTransactions] = useState([])
   const [error, setError] = useState(null)
-  const [mode, setMode] = useState('manual') // 'manual' | 'import'
-  // Bumped after every add so <Dashboard> (which loads its own data) refetches.
-  const [dashboardVersion, setDashboardVersion] = useState(0)
+  const [tab, setTab] = useState('dashboard')
+  const [entryMode, setEntryMode] = useState('manual') // 'manual' | 'import', within the Add / Import tab
+  // Bumped whenever transaction data changes, so <Dashboard> and
+  // <Transactions> (which each load their own data) refetch.
+  const [dataVersion, setDataVersion] = useState(0)
+  const refresh = () => setDataVersion((v) => v + 1)
 
   const loadCategories = useCallback(async () => {
     const { data, error } = await supabase.from('categories').select('id, name').order('name')
@@ -21,27 +32,9 @@ function App() {
     setCategories(data)
   }, [])
 
-  const loadTransactions = useCallback(async () => {
-    // Pull the 20 most recent transactions, joined with their category name,
-    // so we don't have to look categories up by id in the UI.
-    const { data, error } = await supabase
-      .from('transactions')
-      .select('id, amount, transaction_date, account_type, paid_by, note, categories(name)')
-      .order('transaction_date', { ascending: false })
-      .order('created_at', { ascending: false })
-      .limit(20)
-
-    if (error) {
-      setError(error.message)
-      return
-    }
-    setTransactions(data)
-  }, [])
-
   useEffect(() => {
     loadCategories()
-    loadTransactions()
-  }, [loadCategories, loadTransactions])
+  }, [loadCategories])
 
   return (
     <>
@@ -52,77 +45,67 @@ function App() {
 
       {error && <div className="error-banner">{error}</div>}
 
-      <Dashboard key={dashboardVersion} />
-
-      <section className="card">
-        <div className="mode-toggle">
+      <nav className="mode-toggle app-nav">
+        {TABS.map((t) => (
           <button
+            key={t.id}
             type="button"
-            className={mode === 'manual' ? 'mode-tab active' : 'mode-tab'}
-            onClick={() => setMode('manual')}
+            className={tab === t.id ? 'mode-tab active' : 'mode-tab'}
+            onClick={() => setTab(t.id)}
           >
-            Add an expense
+            {t.label}
           </button>
-          <button
-            type="button"
-            className={mode === 'import' ? 'mode-tab active' : 'mode-tab'}
-            onClick={() => setMode('import')}
-          >
-            Import a statement
-          </button>
-        </div>
+        ))}
+      </nav>
 
-        {mode === 'manual' ? (
-          <TransactionForm
-            categories={categories}
-            onAdded={() => {
-              loadTransactions()
-              setDashboardVersion((v) => v + 1)
-            }}
-          />
-        ) : (
-          <StatementImport
-            categories={categories}
-            onImported={() => {
-              loadTransactions()
-              setDashboardVersion((v) => v + 1)
-              setMode('manual')
-            }}
-          />
-        )}
-      </section>
+      {tab === 'dashboard' && <Dashboard key={dataVersion} />}
 
-      <section className="card">
-        <h2>Recent expenses</h2>
-        {transactions.length === 0 ? (
-          <p className="empty-state">No expenses logged yet.</p>
-        ) : (
-          <div className="tx-table-wrap">
-            <table className="tx-table">
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Category</th>
-                  <th>Amount</th>
-                  <th>Paid by</th>
-                  <th>Note</th>
-                </tr>
-              </thead>
-              <tbody>
-                {transactions.map((t) => (
-                  <tr key={t.id}>
-                    <td>{t.transaction_date}</td>
-                    <td>{t.categories?.name ?? '—'}</td>
-                    <td className="tx-amount">₹{t.amount}</td>
-                    <td>{t.paid_by}</td>
-                    <td>{t.note}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      {tab === 'add' && (
+        <section className="card">
+          <div className="mode-toggle">
+            <button
+              type="button"
+              className={entryMode === 'manual' ? 'mode-tab active' : 'mode-tab'}
+              onClick={() => setEntryMode('manual')}
+            >
+              Add an expense
+            </button>
+            <button
+              type="button"
+              className={entryMode === 'import' ? 'mode-tab active' : 'mode-tab'}
+              onClick={() => setEntryMode('import')}
+            >
+              Import a statement
+            </button>
           </div>
-        )}
-      </section>
+
+          {entryMode === 'manual' ? (
+            <TransactionForm categories={categories} onAdded={refresh} />
+          ) : (
+            <StatementImport
+              categories={categories}
+              onImported={() => {
+                refresh()
+                setEntryMode('manual')
+              }}
+            />
+          )}
+        </section>
+      )}
+
+      {tab === 'transactions' && (
+        <section className="card">
+          <h2>Transactions</h2>
+          <Transactions key={dataVersion} categories={categories} onChanged={refresh} />
+        </section>
+      )}
+
+      {tab === 'rules' && (
+        <section className="card">
+          <h2>Categorization rules</h2>
+          <Rules categories={categories} />
+        </section>
+      )}
     </>
   )
 }

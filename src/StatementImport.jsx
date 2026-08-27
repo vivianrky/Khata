@@ -1,7 +1,7 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Papa from 'papaparse'
 import { supabase } from './supabaseClient'
-import { suggestCategory } from './categorize'
+import { suggestCategoryId } from './categorize'
 
 const ACCOUNT_TYPES = [
   { value: 'credit_card', label: 'Credit Card' },
@@ -66,13 +66,15 @@ export default function StatementImport({ categories, onImported }) {
   const [parseError, setParseError] = useState('')
   const [saveError, setSaveError] = useState(null)
   const [saving, setSaving] = useState(false)
+  const [rules, setRules] = useState([])
   const fileInput = useRef(null)
 
-  const categoryByName = useMemo(() => {
-    const m = {}
-    for (const c of categories) m[c.name] = c.id
-    return m
-  }, [categories])
+  useEffect(() => {
+    supabase
+      .from('category_rules')
+      .select('keyword, category_id')
+      .then(({ data }) => setRules(data || []))
+  }, [])
 
   function reset() {
     setStep(1)
@@ -114,12 +116,11 @@ export default function StatementImport({ categories, onImported }) {
     const built = rawRows.map((r) => {
       const description = String(r[map.description] ?? '').trim()
       const amount = Math.abs(parseAmount(r[map.amount]))
-      const categoryName = suggestCategory(description)
       return {
         date: parseDate(r[map.date]),
         description,
         amount,
-        categoryId: categoryName ? categoryByName[categoryName] || '' : '',
+        categoryId: suggestCategoryId(description, rules) || '',
         include: true,
       }
     })
