@@ -41,6 +41,35 @@ const OTHER_COLOR_DARK = '#8b8375'
 
 const MAX_CATEGORY_SLICES = 7 // beyond this, the rest fold into "Other"
 
+const INSIGHT_CATEGORY_LIMIT = 5 // how many categories the breakdown expands
+const INSIGHT_ITEM_LIMIT = 8 // line items shown per category before folding into "+N more"
+
+// Rough, name-based split of a category into "discretionary" (the kind of
+// spending you can choose to cut) vs "essential" (rent, bills, insurance —
+// cutting it isn't really a choice). Categories aren't a fixed list in this
+// app (they build themselves from whatever you import or type), so this is
+// necessarily a best-effort keyword match, not a real classification —
+// anything that doesn't match either list is left "unknown" rather than
+// guessed wrong.
+const DISCRETIONARY_KEYWORDS = [
+  'food', 'dining', 'drink', 'restaurant', 'shopping', 'entertainment',
+  'subscription', 'ott', 'movie', 'travel', 'leisure', 'gift', 'apparel',
+  'clothing', 'beauty', 'salon', 'gaming', 'alcohol', 'bar', 'cafe', 'coffee',
+]
+const ESSENTIAL_KEYWORDS = [
+  'rent', 'emi', 'loan', 'insurance', 'mortgage', 'utility', 'utilities',
+  'bill', 'electricity', 'water', 'gas', 'fuel', 'petrol', 'medical',
+  'health', 'pharmacy', 'hospital', 'education', 'school', 'fees', 'tax',
+  'grocery', 'groceries',
+]
+
+function classifyCategory(name) {
+  const n = name.toLowerCase()
+  if (DISCRETIONARY_KEYWORDS.some((k) => n.includes(k))) return 'discretionary'
+  if (ESSENTIAL_KEYWORDS.some((k) => n.includes(k))) return 'essential'
+  return 'unknown'
+}
+
 const fmtINR = (n) =>
   Math.round(n).toLocaleString('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 })
 
@@ -78,7 +107,7 @@ export default function Dashboard() {
   const load = useCallback(async () => {
     const { data, error } = await supabase
       .from('transactions')
-      .select('amount, transaction_date, categories(name)')
+      .select('amount, transaction_date, note, categories(name)')
       .order('transaction_date', { ascending: true })
 
     if (error) {
@@ -136,6 +165,47 @@ export default function Dashboard() {
   }, [byCategory])
 
   const topCategory = byCategory[0]
+
+  // Same grouping as byCategory, but keeping each transaction (not just the
+  // category total) so the breakdown can list what actually makes up each
+  // category — "Swiggy — ₹1,230", not just "Food & Drinks — ₹10,251".
+  const categoryBreakdown = useMemo(() => {
+    const map = new Map()
+    for (const t of filtered) {
+      const name = t.categories?.name ?? 'Uncategorized'
+      if (!map.has(name)) map.set(name, { name, total: 0, items: [] })
+      const bucket = map.get(name)
+      bucket.total += Number(t.amount)
+      bucket.items.push({ description: t.note || '(no description)', amount: Number(t.amount) })
+    }
+    return Array.from(map.values())
+      .map((c) => ({ ...c, items: c.items.sort((a, b) => b.amount - a.amount) }))
+      .sort((a, b) => b.total - a.total)
+  }, [filtered])
+
+  const shownBreakdown = categoryBreakdown.slice(0, INSIGHT_CATEGORY_LIMIT)
+  const shownBreakdownTotal = shownBreakdown.reduce((sum, c) => sum + c.total, 0)
+
+  // A prioritized "what I'd cut first" list: discretionary categories
+  // ranked by spend (biggest first, with a blunter recommendation for the
+  // very top one), essential categories marked as generally not worth
+  // cutting, and anything unclassified left for you to judge for yourself.
+  const cutPlan = useMemo(() => {
+    const classified = categoryBreakdown.map((c) => ({ ...c, kind: classifyCategory(c.name) }))
+    const discretionary = classified.filter((c) => c.kind === 'discretionary').sort((a, b) => b.total - a.total)
+    const essential = classified.filter((c) => c.kind === 'essential').sort((a, b) => b.total - a.total)
+    const unknown = classified.filter((c) => c.kind === 'unknown').sort((a, b) => b.total - a.total)
+
+    const rows = []
+    discretionary.forEach((c, i) => {
+      if (i === 0) rows.push({ ...c, priority: 1, action: 'Cut by 40–50%' })
+      else if (i === 1) rows.push({ ...c, priority: 2, action: 'Cut by 20–30% temporarily' })
+      else rows.push({ ...c, priority: 3, action: 'Review whether necessary/recurring' })
+    })
+    essential.forEach((c) => rows.push({ ...c, priority: 4, action: "Don't cut unless it can be optimized" }))
+    unknown.forEach((c) => rows.push({ ...c, priority: 5, action: 'Depends what these transactions are' }))
+    return rows
+  }, [categoryBreakdown])
 
   const monthlyTrend = useMemo(() => {
     const map = {}
@@ -292,6 +362,79 @@ export default function Dashboard() {
           </AreaChart>
         </ResponsiveContainer>
       </div>
+
+      {shownBreakdown.length > 0 && (
+        <div className="chart-block">
+          <h3>Spending breakdown</h3>
+          <div className="insight-list">
+            {shownBreakdown.map((c) => (
+              <div key={c.name}>
+                <div className="insight-category-header">
+                  <span>{c.name}</span>
+                  <span className="insight-category-total">{fmtINR(c.total)}</span>
+                </div>
+                <ul className="insight-item-list">
+                  {c.items.slice(0, INSIGHT_ITEM_LIMIT).map((it, i) => (
+                    <li key={i}>
+                      <span className="insight-item-desc">{it.description}</span>
+                      <span className="insight-item-amount">{fmtINR(it.amount)}</span>
+                    </li>
+                  ))}
+                  {c.items.length > INSIGHT_ITEM_LIMIT && (
+                    <li className="insight-item-more">+{c.items.length - INSIGHT_ITEM_LIMIT} more</li>
+                  )}
+                </ul>
+              </div>
+            ))}
+          </div>
+          <p className="insight-summary">
+            Total spending shown: <strong>{fmtINR(shownBreakdownTotal)}</strong>. Your{' '}
+            <strong>{shownBreakdown[0].name}</strong> spending is the largest category, at about{' '}
+            <strong>{((shownBreakdown[0].total / totalSpent) * 100).toFixed(1)}%</strong> of these
+            transactions
+            {shownBreakdown[1] && (
+              <>
+                , while <strong>{shownBreakdown[1].name}</strong> is about{' '}
+                <strong>{((shownBreakdown[1].total / totalSpent) * 100).toFixed(1)}%</strong>.
+              </>
+            )}
+          </p>
+        </div>
+      )}
+
+      {cutPlan.length > 0 && (
+        <div className="chart-block">
+          <h3>Where I'd cut first</h3>
+          <p className="import-hint">
+            A rough, keyword-based read of your categories — not financial advice, just a starting
+            point to look at.
+          </p>
+          <div className="tx-table-wrap">
+            <table className="tx-table">
+              <thead>
+                <tr>
+                  <th />
+                  <th>Category</th>
+                  <th>Current spending</th>
+                  <th>What I'd do</th>
+                </tr>
+              </thead>
+              <tbody>
+                {cutPlan.map((c) => (
+                  <tr key={c.name}>
+                    <td>
+                      <span className={`priority-dot priority-${c.priority}`} />
+                    </td>
+                    <td>{c.name}</td>
+                    <td className="tx-amount">{fmtINR(c.total)}</td>
+                    <td>{c.action}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </section>
   )
 }

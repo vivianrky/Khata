@@ -15,6 +15,9 @@
   --ink-soft: #4b5568;
   --ink-faint: #8b93a1;
   --red: #c0392b;
+  --orange: #eb6834;
+  --amber: #eda100;
+  --green: #1baf7a;
   --teal: #1f6f78;
   --gold: #c9a227;
   --line: #dde1e6;
@@ -31,6 +34,9 @@
     --ink-soft: #a8b0c0;
     --ink-faint: #6b7385;
     --red: #e0685a;
+    --orange: #d95926;
+    --amber: #c98500;
+    --green: #199e70;
     --teal: #4fa8b0;
     --gold: #dfc158;
     --line: #2a3040;
@@ -188,6 +194,102 @@ body {
   .stat-row {
     grid-template-columns: 1fr;
   }
+}
+
+/* Spending breakdown (category -> line items) */
+
+.insight-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.insight-category-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.insight-category-total {
+  font-family: 'IBM Plex Mono', monospace;
+  color: var(--red);
+}
+
+.insight-item-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.insight-item-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 0 4px 14px;
+  font-size: 13px;
+  color: var(--ink-soft);
+  border-bottom: 1px dashed var(--line);
+}
+
+.insight-item-list li:last-child {
+  border-bottom: none;
+}
+
+.insight-item-desc {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.insight-item-amount {
+  font-family: 'IBM Plex Mono', monospace;
+  flex-shrink: 0;
+}
+
+.insight-item-more {
+  color: var(--ink-faint);
+  font-style: italic;
+}
+
+.insight-summary {
+  margin: 16px 0 0;
+  padding: 12px 14px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+/* Where-to-cut priority table */
+
+.priority-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.priority-dot.priority-1 {
+  background: var(--red);
+}
+
+.priority-dot.priority-2 {
+  background: var(--orange);
+}
+
+.priority-dot.priority-3 {
+  background: var(--amber);
+}
+
+.priority-dot.priority-4 {
+  background: var(--green);
+}
+
+.priority-dot.priority-5 {
+  background: var(--ink-faint);
 }
 
 .error-banner {
