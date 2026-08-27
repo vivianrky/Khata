@@ -79,7 +79,7 @@ export function guessColumn(headers, patterns) {
 // looks like a date or amount (a year number, a balance figure) and would
 // otherwise get pulled in as a fake row.
 const SKIP_LINE_PATTERN =
-  /\b(statement period|opening balance|closing balance|available balance|total debits?|total credits?|grand total|sub[\s-]?total|brought forward|carried forward|\bb\/f\b|\bc\/f\b|page \d+|generated on)\b/i
+  /\b(statement period|opening balance|closing balance|available balance|total debits?|total credits?|grand total|sub[\s-]?total|brought forward|carried forward|\bb\/f\b|\bc\/f\b|page \d+|generated on|card no|a\/c no|acc(?:ount)?\s*no|account number|card number)\b/i
 
 const DATE_PATTERNS = [
   /\b(\d{1,2}[/\-.]\d{1,2}[/\-.]\d{2,4})\b/,
@@ -108,9 +108,16 @@ export function parseStatementText(text) {
   for (const line of lines) {
     if (SKIP_LINE_PATTERN.test(line)) continue
 
-    const amtMatches = [...line.matchAll(AMOUNT_PATTERN)].filter(
-      (m) => m[1] && m[1].replace(/[^\d]/g, '').length >= 2,
-    )
+    const amtMatches = [...line.matchAll(AMOUNT_PATTERN)].filter((m) => {
+      if (!m[1] || m[1].replace(/[^\d]/g, '').length < 2) return false
+      // A masked card/account number ("XXXX XXXX XXXX 1234", "**** 1234")
+      // ends in real digits that otherwise look exactly like an amount —
+      // reject a match whose immediately preceding text is masking
+      // characters, even without an explicit "Card No" label on the line.
+      const before = line.slice(Math.max(0, m.index - 6), m.index)
+      if (/[Xx*]{2,}[\s-]*$/.test(before)) return false
+      return true
+    })
     if (!amtMatches.length) continue
 
     let dateStr = ''
@@ -137,4 +144,51 @@ export function parseStatementText(text) {
   }
 
   return rows
+}
+
+// Common Indian bank/card issuer names — used only to build a readable
+// account label ("HDFC •• 9850"), not to change how anything is parsed.
+const BANK_NAMES = [
+  'hdfc', 'icici', 'sbi', 'axis', 'kotak', 'idfc first', 'idfc', 'yes bank',
+  'rbl', 'indusind', 'american express', 'amex', 'citibank', 'pnb',
+  'bank of baroda', 'bob', 'canara', 'union bank', 'federal bank',
+  'au small finance', 'au bank', 'hsbc', 'standard chartered', 'scb',
+  'idbi', 'central bank', 'indian bank', 'uco bank', 'karnataka bank',
+]
+
+// Best-effort guess at which account a statement/photo belongs to, from
+// whatever text is available (extracted PDF/OCR text, or a spreadsheet's
+// filename + a sample of its own content). Never blocks anything — the
+// review step always shows the result so a wrong guess is just as easy to
+// fix as a blank field would have been.
+export function guessAccountInfo(text) {
+  const t = (text || '').toLowerCase()
+
+  let accountType = null
+  if (/\bupi\b/.test(t)) accountType = 'upi'
+  else if (/\bcredit\s*card\b/.test(t)) accountType = 'credit_card'
+  else if (/\bdebit\s*card\b/.test(t)) accountType = 'debit_card'
+
+  const bank = BANK_NAMES.find((b) => t.includes(b))
+
+  // A masked account/card number: "XX 9850", "XXXX-XXXX-XXXX-1234",
+  // "**** 1234" — statements almost always show one of these instead of
+  // the full number.
+  const maskedMatch = text.match(/\b(?:[Xx*]{2,}[\s-]?){1,4}\d{2,4}\b/)
+
+  const parts = []
+  if (bank) {
+    parts.push(
+      bank
+        .split(' ')
+        .map((w) => w.toUpperCase())
+        .join(' '),
+    )
+  }
+  if (maskedMatch) parts.push(maskedMatch[0].replace(/\s+/g, ' ').trim())
+
+  return {
+    accountType,
+    accountName: parts.length ? parts.join(' ') : null,
+  }
 }

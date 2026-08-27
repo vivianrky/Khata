@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import Papa from 'papaparse'
-import { parseAmount, parseDate, guessColumn } from './parsing'
+import { parseAmount, parseDate, guessColumn, guessAccountInfo } from './parsing'
 import { suggestCategoryName, normalizeCategoryName } from '../categorize'
 import ReviewImport from './ReviewImport'
 
@@ -69,6 +69,7 @@ export default function SpreadsheetImport({ categories, paidBy, onBack, onImport
   const [rows, setRows] = useState([])
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [accountGuess, setAccountGuess] = useState({ accountType: null, accountName: null })
   const fileInput = useRef(null)
 
   async function handleFile(file) {
@@ -86,6 +87,12 @@ export default function SpreadsheetImport({ categories, paidBy, onBack, onImport
         amount: guessColumn(fields, ['amount']),
         category: guessColumn(fields, ['category', 'tag', 'label']),
       })
+      // Nothing as rich as a PDF's header to go on here, so this scans the
+      // filename plus a small sample of the file's own cell values — e.g.
+      // "hdfc_creditcard_aug.csv" or a stray "UPI"/"Debit Card" cell.
+      const sample =
+        file.name + ' ' + parsedRows.slice(0, 5).map((r) => Object.values(r).join(' ')).join(' ')
+      setAccountGuess(guessAccountInfo(sample))
       setStep(2)
     } catch (e) {
       setError(e.message)
@@ -120,6 +127,8 @@ export default function SpreadsheetImport({ categories, paidBy, onBack, onImport
         categories={categories}
         paidBy={paidBy}
         headerNote={`${rows.length} rows found — categories come from ${map.category ? 'the column you picked' : "a guess based on each row's description"}, check them over before importing.`}
+        guessedAccountType={accountGuess.accountType}
+        guessedAccountName={accountGuess.accountName}
         onBack={() => setStep(2)}
         onImported={onImported}
       />

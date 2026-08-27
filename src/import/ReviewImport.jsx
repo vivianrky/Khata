@@ -12,9 +12,19 @@ const ACCOUNT_TYPES = [
 // auto-categorized rows, untick anything wrong, then save. `rows` are
 // { date, description, amount, category, include } — `category` is a
 // plain name, resolved to an id (creating it if new) only at import time.
-export default function ReviewImport({ rows, setRows, categories, paidBy, headerNote, onBack, onImported }) {
-  const [accountType, setAccountType] = useState('upi')
-  const [accountName, setAccountName] = useState('')
+export default function ReviewImport({
+  rows,
+  setRows,
+  categories,
+  paidBy,
+  headerNote,
+  onBack,
+  onImported,
+  guessedAccountType,
+  guessedAccountName,
+}) {
+  const [accountType, setAccountType] = useState(guessedAccountType || 'upi')
+  const [accountName, setAccountName] = useState(guessedAccountName || '')
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState(null)
 
@@ -65,6 +75,12 @@ export default function ReviewImport({ rows, setRows, categories, paidBy, header
   return (
     <div>
       <p className="import-hint">{headerNote}</p>
+
+      {(guessedAccountType || guessedAccountName) && (
+        <p className="import-hint">
+          Account type/name guessed from the file — double-check it before importing.
+        </p>
+      )}
 
       <div className="tx-form import-account-fields">
         <div className="field">

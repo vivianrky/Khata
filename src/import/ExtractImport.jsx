@@ -1,9 +1,9 @@
 import { useRef, useState } from 'react'
-import { parseStatementText } from './parsing'
+import { parseStatementText, guessAccountInfo } from './parsing'
 import { suggestCategoryName } from '../categorize'
 import ReviewImport from './ReviewImport'
 
-async function extractPdfText(file) {
+async function extractPdfText(file, password) {
   // Bundled as a real dependency (not loaded from a CDN at runtime) so this
   // doesn't depend on a third-party script being reachable — the one thing
   // the reference design this was inspired by got bitten by.
@@ -14,7 +14,24 @@ async function extractPdfText(file) {
   ).href
 
   const buf = await file.arrayBuffer()
-  const doc = await pdfjsLib.getDocument({ data: buf }).promise
+  let doc
+  try {
+    doc = await pdfjsLib.getDocument({ data: buf, password }).promise
+  } catch (e) {
+    // Most Indian bank/card statements are password-protected (usually
+    // your PAN, date of birth, or a bank-specific convention printed on
+    // the statement's first page or emailed with it). pdfjs throws this
+    // specific exception rather than a generic parse error when a
+    // password is missing or wrong — surfaced as a distinct error so the
+    // UI can prompt for one instead of just saying "couldn't read file."
+    if (e.name === 'PasswordException') {
+      const needsPassword = new Error('PASSWORD_REQUIRED')
+      needsPassword.wrongPassword = e.code === pdfjsLib.PasswordResponses.INCORRECT_PASSWORD
+      throw needsPassword
+    }
+    throw e
+  }
+
   let text = ''
   for (let i = 1; i <= doc.numPages; i++) {
     const page = await doc.getPage(i)
@@ -58,7 +75,7 @@ const KIND_CONFIG = {
   pdf: {
     label: 'PDF statement',
     accept: '.pdf,application/pdf',
-    hint: 'Text is pulled from the PDF and scanned for dates and amounts. Works best on statements with a real text layer, not a scanned image.',
+    hint: 'Text is pulled from the PDF and scanned for dates and amounts. Works best on statements with a real text layer, not a scanned image. Password-protected PDFs are supported — you\'ll be asked for the password.',
     buttonLabel: 'Choose PDF file',
     extract: extractPdfText,
   },
@@ -72,18 +89,22 @@ const KIND_CONFIG = {
 }
 
 export default function ExtractImport({ kind, categories, paidBy, onBack, onImported }) {
-  const [status, setStatus] = useState('idle') // idle | extracting | error | review
+  const [status, setStatus] = useState('idle') // idle | extracting | error | needs-password | review
   const [fileName, setFileName] = useState('')
   const [errorMsg, setErrorMsg] = useState('')
+  const [passwordError, setPasswordError] = useState('')
+  const [password, setPassword] = useState('')
+  const [pendingFile, setPendingFile] = useState(null)
   const [rows, setRows] = useState([])
+  const [accountGuess, setAccountGuess] = useState({ accountType: null, accountName: null })
   const fileInput = useRef(null)
   const config = KIND_CONFIG[kind]
 
-  async function handleFile(file) {
+  async function handleFile(file, pw) {
     setFileName(file.name)
     setStatus('extracting')
     try {
-      const text = await config.extract(file)
+      const text = await config.extract(file, pw)
       const parsed = parseStatementText(text)
       if (!parsed.length) {
         setErrorMsg(
@@ -92,6 +113,7 @@ export default function ExtractImport({ kind, categories, paidBy, onBack, onImpo
         setStatus('error')
         return
       }
+      setAccountGuess(guessAccountInfo(text))
       setRows(
         parsed.map((r) => ({
           ...r,
@@ -101,9 +123,20 @@ export default function ExtractImport({ kind, categories, paidBy, onBack, onImpo
       )
       setStatus('review')
     } catch (e) {
+      if (e.message === 'PASSWORD_REQUIRED') {
+        setPendingFile(file)
+        setPasswordError(e.wrongPassword ? 'Wrong password — try again.' : '')
+        setStatus('needs-password')
+        return
+      }
       setErrorMsg(`Couldn't read that file (${e.message}). Try CSV/Excel import instead if you have one.`)
       setStatus('error')
     }
+  }
+
+  function handlePasswordSubmit(e) {
+    e.preventDefault()
+    handleFile(pendingFile, password)
   }
 
   if (status === 'review') {
@@ -114,12 +147,56 @@ export default function ExtractImport({ kind, categories, paidBy, onBack, onImpo
         categories={categories}
         paidBy={paidBy}
         headerNote={`${rows.length} rows found — text extraction is never perfect, so check every row (especially dates and amounts) before importing.`}
+        guessedAccountType={accountGuess.accountType}
+        guessedAccountName={accountGuess.accountName}
         onBack={() => {
           setStatus('idle')
           setRows([])
         }}
         onImported={onImported}
       />
+    )
+  }
+
+  if (status === 'needs-password') {
+    return (
+      <div>
+        <p className="import-hint">
+          {fileName} is password-protected. Most Indian bank/card statements use your PAN, date of
+          birth, or a bank-specific format — check the email or page the statement came with if
+          you're not sure.
+        </p>
+        <form onSubmit={handlePasswordSubmit} className="tx-form">
+          <div className="field">
+            <label htmlFor="pdf-password">PDF password</label>
+            <input
+              id="pdf-password"
+              type="password"
+              autoFocus
+              required
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+          </div>
+          {passwordError && <div className="error-banner">{passwordError}</div>}
+          <div className="import-actions">
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={() => {
+                setStatus('idle')
+                setPassword('')
+                setPendingFile(null)
+              }}
+            >
+              Cancel
+            </button>
+            <button type="submit" className="primary-button">
+              Unlock and continue
+            </button>
+          </div>
+        </form>
+      </div>
     )
   }
 
