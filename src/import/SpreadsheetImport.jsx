@@ -21,6 +21,60 @@ async function parseCsv(file) {
   })
 }
 
+// ExcelJS cell values aren't always plain strings/numbers — a cell with
+// mixed formatting comes back as { richText: [...] }, a hyperlink as
+// { text, hyperlink }, a formula as { formula, result }. This pulls out
+// the actual displayable text/value from any of those shapes.
+function cellText(value) {
+  if (value == null) return ''
+  if (value instanceof Date) return value.toISOString()
+  if (typeof value === 'object') {
+    if (Array.isArray(value.richText)) return value.richText.map((p) => p.text).join('')
+    if (typeof value.text === 'string') return value.text
+    if ('result' in value) return cellText(value.result)
+    return ''
+  }
+  return String(value)
+}
+
+const HEADER_KEYWORDS = [
+  'date', 'narration', 'description', 'particular', 'remark', 'detail',
+  'merchant', 'transaction', 'amount', 'category', 'debit', 'credit',
+  'type', 'tag', 'label',
+]
+
+// Bank/card statement exports routinely print a letterhead — your name and
+// address, a payment-due summary, credit limit — above the actual
+// transaction table, so the header row is rarely row 1. This scans the
+// first several rows and picks whichever one reads most like a header
+// (multiple cells matching common column-name keywords), rather than
+// assuming row 1.
+function findHeaderRowNumber(sheet) {
+  const scanLimit = Math.min(40, sheet.rowCount)
+  let best = { row: 1, score: 0 }
+  for (let r = 1; r <= scanLimit; r++) {
+    // Count *distinct* cell text, not raw cell count — a merged section
+    // title ("Transaction Summary" spanning 6 columns) repeats the same
+    // text across every underlying cell and would otherwise outscore the
+    // real header row just by being merged wider.
+    const seen = new Set()
+    let score = 0
+    sheet.getRow(r).eachCell({ includeEmpty: false }, (cell) => {
+      const text = cellText(cell.value).trim().toLowerCase()
+      if (!text || seen.has(text)) return
+      seen.add(text)
+      if (HEADER_KEYWORDS.some((k) => text.includes(k))) score++
+    })
+    // A real header row names several different columns — require at
+    // least 3 distinct cells so a single repeated section title (however
+    // keyword-y) can't win.
+    if (seen.size >= 3 && score > best.score) best = { row: r, score }
+  }
+  // Fewer than 2 keyword hits isn't confident enough to call it a header —
+  // fall back to row 1 rather than guessing wrong on an unusual layout.
+  return best.score >= 2 ? best.row : 1
+}
+
 async function parseExcel(file) {
   // Loaded on demand — most imports will be CSV, so this ~1MB+ library
   // shouldn't bloat the initial page load for everyone.
@@ -32,24 +86,22 @@ async function parseExcel(file) {
     throw new Error("Couldn't find any rows in that spreadsheet.")
   }
 
-  const headerRow = sheet.getRow(1)
+  const headerRowNum = findHeaderRowNumber(sheet)
+  const headerRow = sheet.getRow(headerRowNum)
   const headers = []
   headerRow.eachCell({ includeEmpty: false }, (cell, colNumber) => {
-    headers[colNumber] = String(cell.value ?? '').trim()
+    headers[colNumber] = cellText(cell.value).trim()
   })
 
   const rows = []
-  for (let i = 2; i <= sheet.rowCount; i++) {
+  for (let i = headerRowNum + 1; i <= sheet.rowCount; i++) {
     const row = sheet.getRow(i)
     if (row.cellCount === 0) continue
     const obj = {}
     let hasValue = false
     headers.forEach((h, colNumber) => {
       if (!h) return
-      const cell = row.getCell(colNumber)
-      // Excel stores dates as Date objects, not strings — normalize to ISO
-      // so the same parseDate() used everywhere else in the app handles it.
-      const value = cell.value instanceof Date ? cell.value.toISOString() : (cell.value ?? '')
+      const value = cellText(row.getCell(colNumber).value)
       obj[h] = value
       if (value !== '') hasValue = true
     })
@@ -57,7 +109,10 @@ async function parseExcel(file) {
   }
 
   if (!rows.length) throw new Error("Couldn't find any rows in that spreadsheet.")
-  return { headers: headers.filter(Boolean), rows }
+  // A merged header cell ("Transaction Details" spanning two columns) shows
+  // up once per underlying column — dedupe before returning so the mapping
+  // dropdowns don't offer the same column name twice.
+  return { headers: [...new Set(headers.filter(Boolean))], rows }
 }
 
 export default function SpreadsheetImport({ categories, paidBy, onBack, onImported }) {
@@ -65,7 +120,7 @@ export default function SpreadsheetImport({ categories, paidBy, onBack, onImport
   const [fileName, setFileName] = useState('')
   const [headers, setHeaders] = useState([])
   const [rawRows, setRawRows] = useState([])
-  const [map, setMap] = useState({ date: '', description: '', amount: '', category: '' })
+  const [map, setMap] = useState({ date: '', description: '', amount: '', category: '', type: '' })
   const [rows, setRows] = useState([])
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -86,6 +141,10 @@ export default function SpreadsheetImport({ categories, paidBy, onBack, onImport
         description: guessColumn(fields, ['narration', 'description', 'particular', 'remark', 'details', 'merchant']),
         amount: guessColumn(fields, ['amount']),
         category: guessColumn(fields, ['category', 'tag', 'label']),
+        // Credit card statements often carry a "Debit/Credit" (or "Dr/Cr")
+        // column — a row marked Credit is a payment/refund, not spend, and
+        // should default to unchecked in the review table.
+        type: guessColumn(fields, ['debit/credit', 'dr/cr', 'cr/dr', 'transaction type', 'dr / cr']),
       })
       // Nothing as rich as a PDF's header to go on here, so this scans the
       // filename plus a small sample of the file's own cell values — e.g.
@@ -101,20 +160,37 @@ export default function SpreadsheetImport({ categories, paidBy, onBack, onImport
   }
 
   function buildRows() {
-    const built = rawRows.map((r) => {
-      const description = String(r[map.description] ?? '').trim()
-      const amount = Math.abs(parseAmount(r[map.amount]))
-      // Prefer a category already in the source file (many card/bank
-      // exports have one) over guessing from the description ourselves.
-      const fromColumn = map.category ? normalizeCategoryName(r[map.category]) : ''
-      return {
-        date: parseDate(r[map.date]),
-        description,
-        amount,
-        category: fromColumn || suggestCategoryName(description) || '',
-        include: true,
-      }
-    })
+    const built = rawRows
+      .filter((r) => {
+        // A statement footer ("** End of Statement **") often lands in the
+        // same merged row across every column, including the amount one —
+        // drop anything that isn't even a parseable number rather than show
+        // a junk "₹?" row in the preview.
+        return !isNaN(parseAmount(r[map.amount]))
+      })
+      .map((r) => {
+        let description = String(r[map.description] ?? '').trim()
+        const amount = Math.abs(parseAmount(r[map.amount]))
+        // Prefer a category already in the source file (many card/bank
+        // exports have one) over guessing from the description ourselves.
+        const fromColumn = map.category ? normalizeCategoryName(r[map.category]) : ''
+        // A "Credit" row in a Debit/Credit column is a payment/refund coming
+        // IN, not spend going out — importing it as a regular expense would
+        // inflate spending. There's no income/credit concept in this app, so
+        // default it unchecked rather than guess at how to represent it; the
+        // description is marked so it's obvious why, and it's still one
+        // click to include if you actually want it recorded.
+        const typeValue = map.type ? String(r[map.type] ?? '').trim().toLowerCase() : ''
+        const isCredit = typeValue.includes('credit') && !typeValue.includes('debit')
+        if (isCredit) description = `[Credit — payment/refund] ${description}`
+        return {
+          date: parseDate(r[map.date]),
+          description,
+          amount,
+          category: fromColumn || suggestCategoryName(description) || '',
+          include: !isCredit,
+        }
+      })
     setRows(built)
     setStep(3)
   }
@@ -197,6 +273,24 @@ export default function SpreadsheetImport({ categories, paidBy, onBack, onImport
             ))}
           </select>
         </div>
+
+        {headers.some((h) => guessColumn([h], ['debit/credit', 'dr/cr', 'cr/dr', 'transaction type', 'dr / cr'])) && (
+          <div className="field">
+            <label htmlFor="map-type">Debit/Credit column (optional)</label>
+            <select id="map-type" value={map.type} onChange={(e) => setMap({ ...map, type: e.target.value })}>
+              <option value="">None</option>
+              {headers.map((h) => (
+                <option key={h} value={h}>
+                  {h}
+                </option>
+              ))}
+            </select>
+            <p className="import-hint">
+              If set, rows marked "Credit" (payments/refunds, not spend) start unchecked in the next
+              step.
+            </p>
+          </div>
+        )}
 
         <div className="import-actions">
           <button type="button" className="secondary-button" onClick={() => setStep(1)}>
