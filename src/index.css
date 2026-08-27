@@ -4,36 +4,37 @@
   color-scheme: light dark;
   font: 16px/1.5 'Inter', system-ui, sans-serif;
 
-  /* Ledger-book palette: ink on paper, red for spend, teal for income,
-     a single gold rule as the accent. Everything below reads from these
-     variables so the whole app follows the user's light/dark setting. */
-  --paper: #f7f5f0;
-  --paper-dark: #efead9;
-  --card: #fcfbf7;
-  --ink: #211f1c;
-  --ink-soft: #6b665c;
-  --ink-faint: #9c9686;
-  --red: #b33a3a;
-  --teal: #2f6f62;
-  --gold: #b7902e;
-  --line: #dcd5c4;
-  --line-strong: #c3b99e;
-  --shadow: 0 1px 3px rgba(33, 31, 28, 0.08);
+  /* "Midnight Ledger" palette: navy-black ink on a cool grey-white paper,
+     brass gold accent, deep teal-blue for the primary action, terracotta
+     red for spend. Everything below reads from these variables so the
+     whole app follows the user's light/dark setting. */
+  --paper: #f4f5f7;
+  --paper-dark: #e8eaee;
+  --card: #ffffff;
+  --ink: #1a2233;
+  --ink-soft: #4b5568;
+  --ink-faint: #8b93a1;
+  --red: #c0392b;
+  --teal: #1f6f78;
+  --gold: #c9a227;
+  --line: #dde1e6;
+  --line-strong: #c3c9d1;
+  --shadow: 0 1px 3px rgba(26, 34, 51, 0.08);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --paper: #1c1a17;
-    --paper-dark: #242119;
-    --card: #242119;
-    --ink: #ece7db;
-    --ink-soft: #b7af9c;
-    --ink-faint: #8b8375;
-    --red: #d9736f;
-    --teal: #5fa394;
-    --gold: #d4af54;
-    --line: #3a362c;
-    --line-strong: #4a4536;
+    --paper: #12151c;
+    --paper-dark: #1a1f29;
+    --card: #1a1f29;
+    --ink: #e8eaf0;
+    --ink-soft: #a8b0c0;
+    --ink-faint: #6b7385;
+    --red: #e0685a;
+    --teal: #4fa8b0;
+    --gold: #dfc158;
+    --line: #2a3040;
+    --line-strong: #3a4256;
     --shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
   }
 }
