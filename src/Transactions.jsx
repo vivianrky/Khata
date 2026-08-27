@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from './supabaseClient'
+import { useRealtimeRefresh } from './useRealtimeRefresh'
 
 const ACCOUNT_TYPE_LABELS = {
   credit_card: 'Credit Card',
@@ -35,6 +36,8 @@ export default function Transactions({ categories, onChanged }) {
   useEffect(() => {
     load()
   }, [load])
+
+  useRealtimeRefresh('transactions', load)
 
   const filtered = useMemo(() => {
     let rows = transactions

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from './supabaseClient'
+import { useRealtimeRefresh } from './useRealtimeRefresh'
 
 export default function Rules({ categories }) {
   const [rules, setRules] = useState([])
@@ -25,6 +26,8 @@ export default function Rules({ categories }) {
   useEffect(() => {
     load()
   }, [load])
+
+  useRealtimeRefresh('category_rules', load)
 
   async function addRule(e) {
     e.preventDefault()

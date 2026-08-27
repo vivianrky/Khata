@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   ResponsiveContainer,
   BarChart,
@@ -12,6 +12,7 @@ import {
   Area,
 } from 'recharts'
 import { supabase } from './supabaseClient'
+import { useRealtimeRefresh } from './useRealtimeRefresh'
 
 // Validated categorical palette (see the dataviz skill's palette.md) — fixed
 // hue order, checked for colorblind-safety. "Other" (the folded tail of
@@ -71,31 +72,29 @@ export default function Dashboard() {
     return () => mq.removeEventListener('change', onChange)
   }, [])
 
-  useEffect(() => {
-    let cancelled = false
-    async function load() {
-      // All expenses, oldest fields we need only — this app is small enough
-      // (a household's spending) that pulling everything and aggregating in
-      // the browser is simpler than writing SQL aggregate queries.
-      const { data, error } = await supabase
-        .from('transactions')
-        .select('amount, transaction_date, categories(name)')
-        .order('transaction_date', { ascending: true })
+  // All expenses, oldest fields we need only — this app is small enough
+  // (a household's spending) that pulling everything and aggregating in
+  // the browser is simpler than writing SQL aggregate queries.
+  const load = useCallback(async () => {
+    const { data, error } = await supabase
+      .from('transactions')
+      .select('amount, transaction_date, categories(name)')
+      .order('transaction_date', { ascending: true })
 
-      if (cancelled) return
-      if (error) {
-        setError(error.message)
-        setLoading(false)
-        return
-      }
-      setTransactions(data)
+    if (error) {
+      setError(error.message)
       setLoading(false)
+      return
     }
-    load()
-    return () => {
-      cancelled = true
-    }
+    setTransactions(data)
+    setLoading(false)
   }, [])
+
+  useEffect(() => {
+    load()
+  }, [load])
+
+  useRealtimeRefresh('transactions', load)
 
   const monthKeys = useMemo(() => {
     const s = new Set(transactions.map((t) => monthKey(t.transaction_date)))

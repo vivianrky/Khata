@@ -166,6 +166,32 @@ drop policy if exists "own rows only" on budget_allocations;
 create policy "own rows only" on budget_allocations
   for all to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
+-- Realtime: lets the app pick up changes live (e.g. adding an expense on
+-- your phone shows up on your laptop without a manual refresh) instead of
+-- only refreshing right after your own edits. Still scoped by the RLS
+-- policies above — a realtime event never carries a row you couldn't
+-- otherwise SELECT. "ADD TABLE" errors if run twice, so each is wrapped to
+-- stay safe to re-run.
+do $$ begin
+  alter publication supabase_realtime add table transactions;
+exception when duplicate_object then null;
+end $$;
+
+do $$ begin
+  alter publication supabase_realtime add table salaries;
+exception when duplicate_object then null;
+end $$;
+
+do $$ begin
+  alter publication supabase_realtime add table budget_allocations;
+exception when duplicate_object then null;
+end $$;
+
+do $$ begin
+  alter publication supabase_realtime add table category_rules;
+exception when duplicate_object then null;
+end $$;
+
 -- ---------------------------------------------------------------------
 -- One-time, MANUAL step — only if you logged real expenses before today
 -- ---------------------------------------------------------------------

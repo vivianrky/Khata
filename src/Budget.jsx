@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from './supabaseClient'
+import { useRealtimeRefresh } from './useRealtimeRefresh'
 
 const fmtINR = (n) =>
   Math.round(n).toLocaleString('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 })
@@ -66,6 +67,10 @@ export default function Budget({ categories, userId }) {
   useEffect(() => {
     load()
   }, [load])
+
+  useRealtimeRefresh('salaries', load)
+  useRealtimeRefresh('budget_allocations', load)
+  useRealtimeRefresh('transactions', load)
 
   async function saveSalary() {
     if (salary === '') return
