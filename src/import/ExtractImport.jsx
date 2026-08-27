@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { parseStatementText } from './parsing'
-import { suggestCategoryId } from '../categorize'
+import { suggestCategoryName } from '../categorize'
 import ReviewImport from './ReviewImport'
 
 async function extractPdfText(file) {
@@ -71,7 +71,7 @@ const KIND_CONFIG = {
   },
 }
 
-export default function ExtractImport({ kind, categories, rules, paidBy, onBack, onImported }) {
+export default function ExtractImport({ kind, categories, paidBy, onBack, onImported }) {
   const [status, setStatus] = useState('idle') // idle | extracting | error | review
   const [fileName, setFileName] = useState('')
   const [errorMsg, setErrorMsg] = useState('')
@@ -95,7 +95,7 @@ export default function ExtractImport({ kind, categories, rules, paidBy, onBack,
       setRows(
         parsed.map((r) => ({
           ...r,
-          categoryId: suggestCategoryId(r.description, rules) || '',
+          category: suggestCategoryName(r.description) || '',
           include: true,
         })),
       )

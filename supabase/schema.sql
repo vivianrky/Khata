@@ -5,31 +5,18 @@
 -- "if not exists" / "on conflict" everywhere) EXCEPT the one spot flagged
 -- below, which only matters if you already have real data.
 
--- Categories: the fixed list you pick from when adding a transaction.
--- Shared between both of you — not tied to a login, since a category name
--- like "Groceries" isn't private information, and keeping one shared list
--- means you don't have to maintain two copies.
+-- Categories: no fixed starter list — the app builds this table from
+-- whatever you actually use. A category is created the first time its name
+-- shows up: from a "Category" column in an imported file, from the app's
+-- own built-in description-based guess for PDF/photo imports, or from
+-- typing a new one by hand. Shared between both of you — not tied to a
+-- login, since a category name like "Groceries" isn't private information,
+-- and keeping one shared list means you don't have to maintain two copies.
 create table if not exists categories (
   id uuid primary key default gen_random_uuid(),
   name text not null unique,
   created_at timestamptz not null default now()
 );
-
--- A starter set of categories. Add/rename/remove rows in this table
--- any time (via the Supabase Table Editor) to fit how you actually spend.
-insert into categories (name) values
-  ('Groceries'),
-  ('Dining'),
-  ('Fuel'),
-  ('Bills & Utilities'),
-  ('Shopping'),
-  ('Entertainment'),
-  ('Health'),
-  ('Transport'),
-  ('Rent / EMI'),
-  ('Transfers'),
-  ('Other')
-on conflict (name) do nothing;
 
 -- Transactions: every card/UPI expense you log. Private per login — see the
 -- user_id column and the RLS policy below. This create statement is only
@@ -59,42 +46,12 @@ create index if not exists transactions_date_idx on transactions (transaction_da
 create index if not exists transactions_category_idx on transactions (category_id);
 create index if not exists transactions_user_idx on transactions (user_id);
 
--- Category rules: "if the description contains this keyword, suggest this
--- category" — used when importing a statement. Shared, like categories.
-create table if not exists category_rules (
-  id uuid primary key default gen_random_uuid(),
-  keyword text not null unique,
-  category_id uuid not null references categories(id) on delete cascade,
-  created_at timestamptz not null default now()
-);
-
--- A starter set of rules for common Indian merchants/services. Add your own
--- from the Rules tab any time — no need to touch SQL again after this.
-insert into category_rules (keyword, category_id)
-select v.keyword, c.id
-from (values
-  ('swiggy', 'Dining'), ('zomato', 'Dining'), ('dominos', 'Dining'),
-  ('mcdonald', 'Dining'), ('starbucks', 'Dining'),
-  ('bigbasket', 'Groceries'), ('blinkit', 'Groceries'), ('zepto', 'Groceries'),
-  ('dmart', 'Groceries'), ('grofers', 'Groceries'), ('more supermarket', 'Groceries'),
-  ('amazon', 'Shopping'), ('flipkart', 'Shopping'), ('myntra', 'Shopping'),
-  ('ajio', 'Shopping'), ('firstcry', 'Shopping'), ('nykaa', 'Shopping'),
-  ('uber', 'Transport'), ('ola', 'Transport'), ('rapido', 'Transport'),
-  ('petrol', 'Fuel'), ('fuel', 'Fuel'), ('indian oil', 'Fuel'),
-  ('hpcl', 'Fuel'), ('bpcl', 'Fuel'),
-  ('netflix', 'Entertainment'), ('hotstar', 'Entertainment'), ('spotify', 'Entertainment'),
-  ('prime video', 'Entertainment'), ('bookmyshow', 'Entertainment'),
-  ('airtel', 'Bills & Utilities'), ('jio', 'Bills & Utilities'), ('bsnl', 'Bills & Utilities'),
-  ('electricity', 'Bills & Utilities'), ('water bill', 'Bills & Utilities'), ('broadband', 'Bills & Utilities'),
-  ('apollo', 'Health'), ('pharmacy', 'Health'), ('hospital', 'Health'),
-  ('clinic', 'Health'), ('medical', 'Health'),
-  ('rent', 'Rent / EMI'), ('emi', 'Rent / EMI'), ('loan', 'Rent / EMI'),
-  ('atm', 'Other'), ('charges', 'Other'), ('gst', 'Other')
-) as v(keyword, category_name)
-join categories c on c.name = v.category_name
-on conflict (keyword) do nothing;
-
-create index if not exists category_rules_keyword_idx on category_rules (keyword);
+-- The category_rules table (a user-editable keyword -> category list) is
+-- gone — categorization for PDF/photo imports is now a fixed, built-in
+-- guess in the app's own code (src/categorize.js), not a database table or
+-- a screen you maintain. If you ran an earlier version of this file, this
+-- drops that table; harmless since nothing else references it.
+drop table if exists category_rules;
 
 -- Salary budgeting: each login's own monthly salary and how much of it
 -- they're allocating to each category. Private per login — keyed by
@@ -129,15 +86,15 @@ create table if not exists budget_allocations (
 
 create index if not exists budget_allocations_user_month_idx on budget_allocations (user_id, month);
 
--- Row Level Security. categories and category_rules are shared reference
--- data — any logged-in user (either of you) can read and edit them, but you
--- must be logged in at all. transactions, salaries, and budget_allocations
--- are private: each policy's "using / with check (auth.uid() = user_id)"
--- means a query can only ever see or write its own rows — Postgres enforces
--- this on every query, so the app doesn't have to remember to filter.
+-- Row Level Security. categories is shared reference data — any logged-in
+-- user (either of you) can read and create rows in it (that's how the
+-- category list "builds itself"), but you must be logged in at all.
+-- transactions, salaries, and budget_allocations are private: each policy's
+-- "using / with check (auth.uid() = user_id)" means a query can only ever
+-- see or write its own rows — Postgres enforces this on every query, so
+-- the app doesn't have to remember to filter.
 alter table categories enable row level security;
 alter table transactions enable row level security;
-alter table category_rules enable row level security;
 alter table salaries enable row level security;
 alter table budget_allocations enable row level security;
 
@@ -150,11 +107,6 @@ drop policy if exists "anon full access" on transactions;
 drop policy if exists "own rows only" on transactions;
 create policy "own rows only" on transactions
   for all to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
-
-drop policy if exists "anon full access" on category_rules;
-drop policy if exists "authenticated full access" on category_rules;
-create policy "authenticated full access" on category_rules
-  for all to authenticated using (true) with check (true);
 
 drop policy if exists "anon full access" on salaries;
 drop policy if exists "own rows only" on salaries;
@@ -188,7 +140,7 @@ exception when duplicate_object then null;
 end $$;
 
 do $$ begin
-  alter publication supabase_realtime add table category_rules;
+  alter publication supabase_realtime add table categories;
 exception when duplicate_object then null;
 end $$;
 
@@ -204,3 +156,21 @@ end $$;
 --           where user_id is null;
 --
 -- Do this once, from whichever of you the old data actually belongs to.
+
+-- ---------------------------------------------------------------------
+-- Optional cleanup — only if you ran an earlier version of this file
+-- ---------------------------------------------------------------------
+-- Earlier versions seeded 11 fixed categories (Groceries, Dining, ...).
+-- This version stops doing that, but on purpose does NOT delete rows that
+-- already exist — any of those 11 could already be referenced by a real
+-- transaction or budget allocation, and deleting a category a transaction
+-- points to would either fail (the foreign key) or silently blank out that
+-- transaction's category, neither of which this file should decide for
+-- you. If you want to remove ones you never actually used:
+--
+--   delete from categories
+--   where name in ('Groceries','Dining','Fuel','Bills & Utilities',
+--                   'Shopping','Entertainment','Health','Transport',
+--                   'Rent / EMI','Transfers','Other')
+--     and id not in (select category_id from transactions where category_id is not null)
+--     and id not in (select category_id from budget_allocations);

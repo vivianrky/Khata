@@ -5,15 +5,14 @@ import Dashboard from './Dashboard'
 import TransactionForm from './TransactionForm'
 import StatementImport from './StatementImport'
 import Transactions from './Transactions'
-import Rules from './Rules'
 import Budget from './Budget'
+import { useRealtimeRefresh } from './useRealtimeRefresh'
 
 const TABS = [
   { id: 'dashboard', label: 'Dashboard' },
   { id: 'add', label: 'Add / Import' },
   { id: 'transactions', label: 'Transactions' },
   { id: 'budget', label: 'Budget' },
-  { id: 'rules', label: 'Rules' },
 ]
 
 // A logged-in session's fake "@khata.local" email, shown back as the plain
@@ -31,7 +30,10 @@ function App() {
   // Bumped whenever transaction data changes, so <Dashboard> and
   // <Transactions> (which each load their own data) refetch.
   const [dataVersion, setDataVersion] = useState(0)
-  const refresh = () => setDataVersion((v) => v + 1)
+  const refresh = () => {
+    setDataVersion((v) => v + 1)
+    loadCategories() // a new category may have just been created on the fly
+  }
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session))
@@ -53,6 +55,11 @@ function App() {
   useEffect(() => {
     if (session) loadCategories()
   }, [session, loadCategories])
+
+  // Categories are shared and can be created by either of you from
+  // anywhere in the app — picks up a new one without waiting for your own
+  // next edit to trigger a refresh.
+  useRealtimeRefresh('categories', loadCategories)
 
   if (session === undefined) {
     return (
@@ -150,13 +157,6 @@ function App() {
         <section className="card">
           <h2>Budget</h2>
           <Budget key={dataVersion} categories={categories} userId={session.user.id} />
-        </section>
-      )}
-
-      {tab === 'rules' && (
-        <section className="card">
-          <h2>Categorization rules</h2>
-          <Rules categories={categories} />
         </section>
       )}
     </>

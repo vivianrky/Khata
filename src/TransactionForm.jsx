@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { supabase } from './supabaseClient'
+import { getOrCreateCategoryId } from './categorize'
 
 const ACCOUNT_TYPES = [
   { value: 'credit_card', label: 'Credit Card' },
@@ -19,7 +20,7 @@ export default function TransactionForm({ categories, paidBy, onAdded }) {
   const [date, setDate] = useState(today())
   const [accountType, setAccountType] = useState('upi')
   const [accountName, setAccountName] = useState('')
-  const [categoryId, setCategoryId] = useState('')
+  const [category, setCategory] = useState('')
   const [note, setNote] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
@@ -29,12 +30,23 @@ export default function TransactionForm({ categories, paidBy, onAdded }) {
     setError(null)
     setSaving(true)
 
+    let categoryId = null
+    try {
+      // Looks the category up by name, creating it on the fly if this is a
+      // brand new one you just typed — see categorize.js.
+      categoryId = await getOrCreateCategoryId(supabase, category)
+    } catch (err) {
+      setSaving(false)
+      setError(err.message)
+      return
+    }
+
     const { error } = await supabase.from('transactions').insert({
       amount: Number(amount),
       transaction_date: date,
       account_type: accountType,
       account_name: accountName || null,
-      category_id: categoryId || null,
+      category_id: categoryId,
       paid_by: paidBy,
       note: note || null,
     })
@@ -108,21 +120,20 @@ export default function TransactionForm({ categories, paidBy, onAdded }) {
 
       <div className="field">
         <label htmlFor="tx-category">Category</label>
-        <select
+        <input
           id="tx-category"
+          type="text"
           required
-          value={categoryId}
-          onChange={(e) => setCategoryId(e.target.value)}
-        >
-          <option value="" disabled>
-            Choose a category
-          </option>
+          list="tx-category-options"
+          placeholder="e.g. Groceries — pick an existing one or type a new one"
+          value={category}
+          onChange={(e) => setCategory(e.target.value)}
+        />
+        <datalist id="tx-category-options">
           {categories.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
+            <option key={c.id} value={c.name} />
           ))}
-        </select>
+        </datalist>
       </div>
 
       <div className="field">

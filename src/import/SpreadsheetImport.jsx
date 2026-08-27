@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import Papa from 'papaparse'
 import { parseAmount, parseDate, guessColumn } from './parsing'
-import { suggestCategoryId } from '../categorize'
+import { suggestCategoryName, normalizeCategoryName } from '../categorize'
 import ReviewImport from './ReviewImport'
 
 async function parseCsv(file) {
@@ -60,12 +60,12 @@ async function parseExcel(file) {
   return { headers: headers.filter(Boolean), rows }
 }
 
-export default function SpreadsheetImport({ categories, rules, paidBy, onBack, onImported }) {
+export default function SpreadsheetImport({ categories, paidBy, onBack, onImported }) {
   const [step, setStep] = useState(1) // 1 = choose file, 2 = map columns, 3 = review
   const [fileName, setFileName] = useState('')
   const [headers, setHeaders] = useState([])
   const [rawRows, setRawRows] = useState([])
-  const [map, setMap] = useState({ date: '', description: '', amount: '' })
+  const [map, setMap] = useState({ date: '', description: '', amount: '', category: '' })
   const [rows, setRows] = useState([])
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -84,6 +84,7 @@ export default function SpreadsheetImport({ categories, rules, paidBy, onBack, o
         date: guessColumn(fields, ['date']),
         description: guessColumn(fields, ['narration', 'description', 'particular', 'remark', 'details', 'merchant']),
         amount: guessColumn(fields, ['amount']),
+        category: guessColumn(fields, ['category', 'tag', 'label']),
       })
       setStep(2)
     } catch (e) {
@@ -96,11 +97,14 @@ export default function SpreadsheetImport({ categories, rules, paidBy, onBack, o
     const built = rawRows.map((r) => {
       const description = String(r[map.description] ?? '').trim()
       const amount = Math.abs(parseAmount(r[map.amount]))
+      // Prefer a category already in the source file (many card/bank
+      // exports have one) over guessing from the description ourselves.
+      const fromColumn = map.category ? normalizeCategoryName(r[map.category]) : ''
       return {
         date: parseDate(r[map.date]),
         description,
         amount,
-        categoryId: suggestCategoryId(description, rules) || '',
+        category: fromColumn || suggestCategoryName(description) || '',
         include: true,
       }
     })
@@ -115,7 +119,7 @@ export default function SpreadsheetImport({ categories, rules, paidBy, onBack, o
         setRows={setRows}
         categories={categories}
         paidBy={paidBy}
-        headerNote={`${rows.length} rows found — categories are guessed from the description, check them over before importing.`}
+        headerNote={`${rows.length} rows found — categories come from ${map.category ? 'the column you picked' : "a guess based on each row's description"}, check them over before importing.`}
         onBack={() => setStep(2)}
         onImported={onImported}
       />
@@ -161,6 +165,22 @@ export default function SpreadsheetImport({ categories, rules, paidBy, onBack, o
           <label htmlFor="map-amount">Amount column</label>
           <select id="map-amount" value={map.amount} onChange={(e) => setMap({ ...map, amount: e.target.value })}>
             <option value="">Select…</option>
+            {headers.map((h) => (
+              <option key={h} value={h}>
+                {h}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="field">
+          <label htmlFor="map-category">Category column (optional)</label>
+          <select
+            id="map-category"
+            value={map.category}
+            onChange={(e) => setMap({ ...map, category: e.target.value })}
+          >
+            <option value="">None — guess from description instead</option>
             {headers.map((h) => (
               <option key={h} value={h}>
                 {h}

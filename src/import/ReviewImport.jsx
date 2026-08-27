@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { supabase } from '../supabaseClient'
+import { resolveCategoryIds, normalizeCategoryName } from '../categorize'
 
 const ACCOUNT_TYPES = [
   { value: 'credit_card', label: 'Credit Card' },
@@ -9,7 +10,8 @@ const ACCOUNT_TYPES = [
 
 // The last step of every import method: confirm account details, check the
 // auto-categorized rows, untick anything wrong, then save. `rows` are
-// { date, description, amount, categoryId, include }.
+// { date, description, amount, category, include } — `category` is a
+// plain name, resolved to an id (creating it if new) only at import time.
 export default function ReviewImport({ rows, setRows, categories, paidBy, headerNote, onBack, onImported }) {
   const [accountType, setAccountType] = useState('upi')
   const [accountName, setAccountName] = useState('')
@@ -26,17 +28,28 @@ export default function ReviewImport({ rows, setRows, categories, paidBy, header
     setSaving(true)
     setSaveError(null)
 
-    const toInsert = rows
-      .filter((r) => r.include && r.date && r.amount > 0)
-      .map((r) => ({
-        amount: r.amount,
-        transaction_date: r.date,
-        account_type: accountType,
-        account_name: accountName || null,
-        category_id: r.categoryId || null,
-        paid_by: paidBy,
-        note: r.description || null,
-      }))
+    const included = rows.filter((r) => r.include && r.date && r.amount > 0)
+
+    let categoryIds
+    try {
+      // One pass: every distinct category name across the batch gets
+      // looked up (or created, if it's new) exactly once.
+      categoryIds = await resolveCategoryIds(supabase, included.map((r) => r.category))
+    } catch (err) {
+      setSaving(false)
+      setSaveError(err.message)
+      return
+    }
+
+    const toInsert = included.map((r) => ({
+      amount: r.amount,
+      transaction_date: r.date,
+      account_type: accountType,
+      account_name: accountName || null,
+      category_id: categoryIds.get(normalizeCategoryName(r.category)) ?? null,
+      paid_by: paidBy,
+      note: r.description || null,
+    }))
 
     const { error } = await supabase.from('transactions').insert(toInsert)
     setSaving(false)
@@ -76,6 +89,12 @@ export default function ReviewImport({ rows, setRows, categories, paidBy, header
         </div>
       </div>
 
+      <datalist id="review-category-options">
+        {categories.map((c) => (
+          <option key={c.id} value={c.name} />
+        ))}
+      </datalist>
+
       <div className="tx-table-wrap">
         <table className="tx-table import-preview-table">
           <thead>
@@ -103,14 +122,13 @@ export default function ReviewImport({ rows, setRows, categories, paidBy, header
                 <td className="import-desc-cell">{r.description || '—'}</td>
                 <td className="tx-amount">₹{isNaN(r.amount) ? '?' : r.amount}</td>
                 <td>
-                  <select value={r.categoryId} onChange={(e) => updateRow(i, 'categoryId', e.target.value)}>
-                    <option value="">Uncategorized</option>
-                    {categories.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </select>
+                  <input
+                    type="text"
+                    list="review-category-options"
+                    placeholder="Uncategorized"
+                    value={r.category}
+                    onChange={(e) => updateRow(i, 'category', e.target.value)}
+                  />
                 </td>
               </tr>
             ))}
@@ -124,7 +142,7 @@ export default function ReviewImport({ rows, setRows, categories, paidBy, header
         <button type="button" className="secondary-button" onClick={onBack}>
           Back
         </button>
-        <button type="button" disabled={saving || includedCount === 0} onClick={handleImport}>
+        <button type="button" className="primary-button" disabled={saving || includedCount === 0} onClick={handleImport}>
           {saving ? 'Importing…' : `Import ${includedCount} transaction${includedCount === 1 ? '' : 's'}`}
         </button>
       </div>
