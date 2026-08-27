@@ -2,11 +2,13 @@ import { useCallback, useEffect, useState } from 'react'
 import { supabase } from './supabaseClient'
 import Dashboard from './Dashboard'
 import TransactionForm from './TransactionForm'
+import StatementImport from './StatementImport'
 
 function App() {
   const [categories, setCategories] = useState([])
   const [transactions, setTransactions] = useState([])
   const [error, setError] = useState(null)
+  const [mode, setMode] = useState('manual') // 'manual' | 'import'
   // Bumped after every add so <Dashboard> (which loads its own data) refetches.
   const [dashboardVersion, setDashboardVersion] = useState(0)
 
@@ -53,14 +55,41 @@ function App() {
       <Dashboard key={dashboardVersion} />
 
       <section className="card">
-        <h2>Add an expense</h2>
-        <TransactionForm
-          categories={categories}
-          onAdded={() => {
-            loadTransactions()
-            setDashboardVersion((v) => v + 1)
-          }}
-        />
+        <div className="mode-toggle">
+          <button
+            type="button"
+            className={mode === 'manual' ? 'mode-tab active' : 'mode-tab'}
+            onClick={() => setMode('manual')}
+          >
+            Add an expense
+          </button>
+          <button
+            type="button"
+            className={mode === 'import' ? 'mode-tab active' : 'mode-tab'}
+            onClick={() => setMode('import')}
+          >
+            Import a statement
+          </button>
+        </div>
+
+        {mode === 'manual' ? (
+          <TransactionForm
+            categories={categories}
+            onAdded={() => {
+              loadTransactions()
+              setDashboardVersion((v) => v + 1)
+            }}
+          />
+        ) : (
+          <StatementImport
+            categories={categories}
+            onImported={() => {
+              loadTransactions()
+              setDashboardVersion((v) => v + 1)
+              setMode('manual')
+            }}
+          />
+        )}
       </section>
 
       <section className="card">
