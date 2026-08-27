@@ -40,41 +40,49 @@ function App() {
 
   return (
     <>
-      <h1>Khata</h1>
-      <p>Household expense tracker.</p>
+      <header className="app-header">
+        <h1>📖 Khata</h1>
+        <p>your money, entered in the book</p>
+      </header>
 
-      {error && <p style={{ color: 'crimson' }}>{error}</p>}
+      {error && <div className="error-banner">{error}</div>}
 
-      <h2>Add an expense</h2>
-      <TransactionForm categories={categories} onAdded={loadTransactions} />
+      <section className="card">
+        <h2>Add an expense</h2>
+        <TransactionForm categories={categories} onAdded={loadTransactions} />
+      </section>
 
-      <h2>Recent expenses</h2>
-      {transactions.length === 0 ? (
-        <p>No expenses logged yet.</p>
-      ) : (
-        <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-          <thead>
-            <tr>
-              <th>Date</th>
-              <th>Category</th>
-              <th>Amount</th>
-              <th>Paid by</th>
-              <th>Note</th>
-            </tr>
-          </thead>
-          <tbody>
-            {transactions.map((t) => (
-              <tr key={t.id}>
-                <td>{t.transaction_date}</td>
-                <td>{t.categories?.name ?? '—'}</td>
-                <td>₹{t.amount}</td>
-                <td>{t.paid_by}</td>
-                <td>{t.note}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+      <section className="card">
+        <h2>Recent expenses</h2>
+        {transactions.length === 0 ? (
+          <p className="empty-state">No expenses logged yet.</p>
+        ) : (
+          <div className="tx-table-wrap">
+            <table className="tx-table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Category</th>
+                  <th>Amount</th>
+                  <th>Paid by</th>
+                  <th>Note</th>
+                </tr>
+              </thead>
+              <tbody>
+                {transactions.map((t) => (
+                  <tr key={t.id}>
+                    <td>{t.transaction_date}</td>
+                    <td>{t.categories?.name ?? '—'}</td>
+                    <td className="tx-amount">₹{t.amount}</td>
+                    <td>{t.paid_by}</td>
+                    <td>{t.note}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
     </>
   )
 }

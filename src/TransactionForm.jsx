@@ -54,10 +54,11 @@ export default function TransactionForm({ categories, onAdded }) {
   }
 
   return (
-    <form onSubmit={handleSubmit} style={{ display: 'grid', gap: 8, textAlign: 'left' }}>
-      <label>
-        Amount (₹)
+    <form onSubmit={handleSubmit} className="tx-form">
+      <div className="field">
+        <label htmlFor="tx-amount">Amount (₹)</label>
         <input
+          id="tx-amount"
           type="number"
           step="0.01"
           min="0.01"
@@ -65,37 +66,53 @@ export default function TransactionForm({ categories, onAdded }) {
           value={amount}
           onChange={(e) => setAmount(e.target.value)}
         />
-      </label>
+      </div>
 
-      <label>
-        Date
-        <input type="date" required value={date} onChange={(e) => setDate(e.target.value)} />
-      </label>
+      <div className="field">
+        <label htmlFor="tx-date">Date</label>
+        <input
+          id="tx-date"
+          type="date"
+          required
+          value={date}
+          onChange={(e) => setDate(e.target.value)}
+        />
+      </div>
 
-      <label>
-        Account type
-        <select value={accountType} onChange={(e) => setAccountType(e.target.value)}>
+      <div className="field">
+        <label htmlFor="tx-account-type">Account type</label>
+        <select
+          id="tx-account-type"
+          value={accountType}
+          onChange={(e) => setAccountType(e.target.value)}
+        >
           {ACCOUNT_TYPES.map((t) => (
             <option key={t.value} value={t.value}>
               {t.label}
             </option>
           ))}
         </select>
-      </label>
+      </div>
 
-      <label>
-        Account name (optional)
+      <div className="field">
+        <label htmlFor="tx-account-name">Account name (optional)</label>
         <input
+          id="tx-account-name"
           type="text"
           placeholder="e.g. HDFC Credit Card, Google Pay"
           value={accountName}
           onChange={(e) => setAccountName(e.target.value)}
         />
-      </label>
+      </div>
 
-      <label>
-        Category
-        <select required value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
+      <div className="field">
+        <label htmlFor="tx-category">Category</label>
+        <select
+          id="tx-category"
+          required
+          value={categoryId}
+          onChange={(e) => setCategoryId(e.target.value)}
+        >
           <option value="" disabled>
             Choose a category
           </option>
@@ -105,25 +122,26 @@ export default function TransactionForm({ categories, onAdded }) {
             </option>
           ))}
         </select>
-      </label>
+      </div>
 
-      <label>
-        Paid by
+      <div className="field">
+        <label htmlFor="tx-paid-by">Paid by</label>
         <input
+          id="tx-paid-by"
           type="text"
           required
           placeholder="Your name"
           value={paidBy}
           onChange={(e) => setPaidBy(e.target.value)}
         />
-      </label>
+      </div>
 
-      <label>
-        Note (optional)
-        <input type="text" value={note} onChange={(e) => setNote(e.target.value)} />
-      </label>
+      <div className="field">
+        <label htmlFor="tx-note">Note (optional)</label>
+        <input id="tx-note" type="text" value={note} onChange={(e) => setNote(e.target.value)} />
+      </div>
 
-      {error && <p style={{ color: 'crimson' }}>{error}</p>}
+      {error && <div className="error-banner">{error}</div>}
 
       <button type="submit" disabled={saving}>
         {saving ? 'Saving…' : 'Add expense'}

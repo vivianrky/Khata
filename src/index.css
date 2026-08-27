@@ -1,14 +1,206 @@
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
 :root {
   color-scheme: light dark;
-  font: 16px/1.5 system-ui, 'Segoe UI', Roboto, sans-serif;
+  font: 16px/1.5 'Inter', system-ui, sans-serif;
+
+  /* Ledger-book palette: ink on paper, red for spend, teal for income,
+     a single gold rule as the accent. Everything below reads from these
+     variables so the whole app follows the user's light/dark setting. */
+  --paper: #f7f5f0;
+  --paper-dark: #efead9;
+  --card: #fcfbf7;
+  --ink: #211f1c;
+  --ink-soft: #6b665c;
+  --ink-faint: #9c9686;
+  --red: #b33a3a;
+  --teal: #2f6f62;
+  --gold: #b7902e;
+  --line: #dcd5c4;
+  --line-strong: #c3b99e;
+  --shadow: 0 1px 3px rgba(33, 31, 28, 0.08);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #1c1a17;
+    --paper-dark: #242119;
+    --card: #242119;
+    --ink: #ece7db;
+    --ink-soft: #b7af9c;
+    --ink-faint: #8b8375;
+    --red: #d9736f;
+    --teal: #5fa394;
+    --gold: #d4af54;
+    --line: #3a362c;
+    --line-strong: #4a4536;
+    --shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  }
+}
+
+* {
+  box-sizing: border-box;
 }
 
 body {
   margin: 0;
+  background: var(--paper);
+  color: var(--ink);
 }
 
 #root {
-  max-width: 640px;
+  max-width: 720px;
   margin: 0 auto;
-  padding: 24px 16px;
+  padding: 32px 16px 64px;
+}
+
+.app-header {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 28px;
+  padding-bottom: 16px;
+  border-bottom: 2px solid var(--ink);
+}
+
+.app-header h1 {
+  font-family: 'Fraunces', serif;
+  font-weight: 600;
+  margin: 0;
+  font-size: 30px;
+}
+
+.app-header p {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  padding: 20px;
+  margin-bottom: 24px;
+}
+
+.card h2 {
+  font-family: 'Fraunces', serif;
+  font-weight: 600;
+  margin: 0 0 16px;
+  font-size: 19px;
+}
+
+.error-banner {
+  background: color-mix(in srgb, var(--red) 12%, transparent);
+  border: 1px solid var(--red);
+  color: var(--red);
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin-bottom: 16px;
+  font-size: 14px;
+}
+
+/* Transaction form */
+
+.tx-form {
+  display: grid;
+  gap: 14px;
+}
+
+.tx-form .field {
+  display: grid;
+  gap: 6px;
+}
+
+.tx-form label {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.tx-form input,
+.tx-form select {
+  font: inherit;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  padding: 10px 12px;
+}
+
+.tx-form input:focus,
+.tx-form select:focus {
+  outline: 2px solid var(--gold);
+  outline-offset: 1px;
+}
+
+.tx-form button {
+  font: inherit;
+  font-weight: 600;
+  color: #fff;
+  background: var(--teal);
+  border: none;
+  border-radius: 999px;
+  padding: 12px 20px;
+  cursor: pointer;
+  justify-self: start;
+}
+
+.tx-form button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* Recent expenses — ruled ledger rows */
+
+.tx-table-wrap {
+  overflow-x: auto;
+}
+
+.tx-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.tx-table th {
+  text-align: left;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ink-faint);
+  padding: 0 12px 8px;
+  border-bottom: 1px solid var(--ink);
+}
+
+.tx-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+  font-family: 'Inter', sans-serif;
+}
+
+.tx-table tr:hover td {
+  background: var(--paper-dark);
+}
+
+.tx-table tr:last-child td {
+  border-bottom: none;
+}
+
+.tx-amount {
+  font-family: 'IBM Plex Mono', monospace;
+  font-weight: 600;
+  color: var(--red);
+}
+
+.empty-state {
+  color: var(--ink-faint);
+  margin: 0;
+  text-align: center;
+  padding: 24px 0;
 }
