@@ -7,7 +7,13 @@ import { supabase } from './supabaseClient'
 // to. This trades away "forgot password" email recovery for simplicity;
 // if you lose your password, reset it directly in the Supabase dashboard
 // (Authentication -> Users -> ... -> Reset password).
-const FAKE_EMAIL_DOMAIN = 'khata.local'
+//
+// Not ".local", ".test", ".invalid", or "example.com/.org/.net" — all of
+// those are officially reserved (RFC 2606 / RFC 6762) and Supabase's email
+// validator rejects them outright. This domain isn't reserved by anything,
+// so it passes format validation even though, like the others, no mail
+// server actually exists there.
+const FAKE_EMAIL_DOMAIN = 'khata-household.app'
 const USERNAME_PATTERN = /^[a-zA-Z0-9_.-]{3,32}$/
 
 function usernameToEmail(username) {
