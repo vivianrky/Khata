@@ -14,7 +14,14 @@ frontend, [Supabase](https://supabase.com) (hosted Postgres) as the backend.
 2. **Create a Supabase project** (if you haven't already) at
    [supabase.com](https://supabase.com) — it's free for a project this size.
 
-3. **Configure your environment**
+3. **Set up the database**
+
+   Open your Supabase project → **SQL Editor** → New query, paste the
+   contents of [`supabase/schema.sql`](supabase/schema.sql), and run it.
+   This creates the `categories` and `transactions` tables and a starter
+   set of categories (Groceries, Dining, Fuel, ...). Safe to re-run.
+
+4. **Configure your environment**
 
    ```sh
    cp .env.example .env
@@ -25,7 +32,7 @@ frontend, [Supabase](https://supabase.com) (hosted Postgres) as the backend.
    **Settings → API** page. `.env` is git-ignored, so your keys never get
    committed.
 
-4. **Run the app**
+5. **Run the app**
 
    ```sh
    npm run dev
@@ -37,14 +44,21 @@ frontend, [Supabase](https://supabase.com) (hosted Postgres) as the backend.
 ## Project structure
 
 ```
+supabase/
+  schema.sql          # database schema — run this in the Supabase SQL Editor
 src/
-  main.jsx          # app entry point
-  App.jsx           # root component
-  supabaseClient.js # Supabase client, reads config from .env
+  main.jsx             # app entry point
+  App.jsx              # root component: loads data, shows recent expenses
+  TransactionForm.jsx   # form for logging one expense
+  supabaseClient.js    # Supabase client, reads config from .env
 ```
 
 ## Status
 
-This is the initial scaffold — a working React + Vite app wired up to talk
-to Supabase, with a simple connection check on screen. Expense tracking
-features (adding, listing, splitting expenses) come next.
+- ✅ Log an expense by hand (amount, date, card/UPI, category, who paid, note)
+- ✅ See your 20 most recent expenses
+- ⏳ Category-breakdown dashboard with trends — next up
+- ⏳ Importing bank/card statement files — later, once the manual flow is solid
+
+No login yet — see the note in `supabase/schema.sql` about what that means
+for now.
