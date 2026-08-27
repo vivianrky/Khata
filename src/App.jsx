@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from './supabaseClient'
+import Dashboard from './Dashboard'
 import TransactionForm from './TransactionForm'
 
 function App() {
   const [categories, setCategories] = useState([])
   const [transactions, setTransactions] = useState([])
   const [error, setError] = useState(null)
+  // Bumped after every add so <Dashboard> (which loads its own data) refetches.
+  const [dashboardVersion, setDashboardVersion] = useState(0)
 
   const loadCategories = useCallback(async () => {
     const { data, error } = await supabase.from('categories').select('id, name').order('name')
@@ -47,9 +50,17 @@ function App() {
 
       {error && <div className="error-banner">{error}</div>}
 
+      <Dashboard key={dashboardVersion} />
+
       <section className="card">
         <h2>Add an expense</h2>
-        <TransactionForm categories={categories} onAdded={loadTransactions} />
+        <TransactionForm
+          categories={categories}
+          onAdded={() => {
+            loadTransactions()
+            setDashboardVersion((v) => v + 1)
+          }}
+        />
       </section>
 
       <section className="card">
