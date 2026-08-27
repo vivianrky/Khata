@@ -12,6 +12,11 @@ export function parseAmount(raw) {
 
 const pad2 = (n) => String(n).padStart(2, '0')
 
+const MONTH_NAMES = {
+  jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6,
+  jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12,
+}
+
 export function parseDate(raw) {
   if (!raw) return ''
   const s = String(raw).trim()
@@ -31,7 +36,32 @@ export function parseDate(raw) {
     return `${y}-${pad2(mo)}-${pad2(d)}`
   }
 
-  // Fall back to JS's parser for unambiguous formats like "15 Aug 2026".
+  // "13 Aug 2026" / "13 August 2026".
+  m = s.match(/^(\d{1,2})\s+([A-Za-z]{3,9})\s+(\d{2,4})$/)
+  if (m) {
+    const mo = MONTH_NAMES[m[2].slice(0, 3).toLowerCase()]
+    if (mo) {
+      let y = m[3]
+      if (y.length === 2) y = '20' + y
+      return `${y}-${pad2(mo)}-${pad2(m[1])}`
+    }
+  }
+
+  // "13 Aug" — no year. Many card/UPI apps show recent transactions this
+  // way, on the assumption it's obviously "this year". Same assumption
+  // here, since there's nothing else to go on — the review step always
+  // shows the resulting date so it's easy to correct if a statement
+  // happens to span a year boundary.
+  m = s.match(/^(\d{1,2})\s+([A-Za-z]{3,9})$/)
+  if (m) {
+    const mo = MONTH_NAMES[m[2].slice(0, 3).toLowerCase()]
+    if (mo) {
+      const year = new Date().getFullYear()
+      return `${year}-${pad2(mo)}-${pad2(m[1])}`
+    }
+  }
+
+  // Fall back to JS's parser for anything else unambiguous.
   const dt = new Date(s)
   if (!isNaN(dt)) return dt.toISOString().slice(0, 10)
 
@@ -55,6 +85,11 @@ const DATE_PATTERNS = [
   /\b(\d{1,2}[/\-.]\d{1,2}[/\-.]\d{2,4})\b/,
   /\b(\d{4}-\d{1,2}-\d{1,2})\b/,
   /\b(\d{1,2}\s+[A-Za-z]{3,9}\s+\d{2,4})\b/,
+  // No-year fallback ("13 Aug") — tried last so a line with a real year
+  // still matches that instead. The (?!\s+\d) guard stops this from eating
+  // just the first two words of a "13 Aug 2026" the earlier pattern
+  // somehow missed (defends against odd whitespace from OCR).
+  /\b(\d{1,2}\s+[A-Za-z]{3,9})\b(?!\s+\d)/,
 ]
 const AMOUNT_PATTERN = /(?:₹|rs\.?|inr)?\s*(-?\(?\d[\d,]*\.\d{1,2}\)?|-?\(?\d[\d,]{2,}\)?)\s*(cr|dr)?/gi
 

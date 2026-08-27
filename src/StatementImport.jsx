@@ -12,12 +12,21 @@ const METHODS = [
 export default function StatementImport({ categories, paidBy, onImported }) {
   const [method, setMethod] = useState(null)
   const [rules, setRules] = useState([])
+  const [rulesError, setRulesError] = useState(null)
 
   useEffect(() => {
     supabase
       .from('category_rules')
       .select('keyword, category_id')
-      .then(({ data }) => setRules(data || []))
+      .then(({ data, error }) => {
+        if (error) {
+          // Fail loud: silently falling back to an empty rule set meant
+          // every import went out fully uncategorized with no explanation.
+          setRulesError('Category suggestions are unavailable right now (' + error.message + '). Rows will import as Uncategorized — you can still set categories by hand in the review step.')
+          return
+        }
+        setRules(data || [])
+      })
   }, [])
 
   if (!method) {
@@ -27,6 +36,7 @@ export default function StatementImport({ categories, paidBy, onImported }) {
           Choose how you'd like to bring transactions in. Every path ends with a review step, so
           nothing is saved before you've seen it.
         </p>
+        {rulesError && <div className="error-banner">{rulesError}</div>}
         <div className="import-method-grid">
           {METHODS.map((m) => (
             <button key={m.id} type="button" className="import-method-card" onClick={() => setMethod(m.id)}>
