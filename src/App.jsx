@@ -2,17 +2,12 @@ import { useCallback, useEffect, useState } from 'react'
 import { supabase } from './supabaseClient'
 import Auth from './Auth'
 import Dashboard from './Dashboard'
-import TransactionForm from './TransactionForm'
 import StatementImport from './StatementImport'
-import Transactions from './Transactions'
-import Budget from './Budget'
 import { useRealtimeRefresh } from './useRealtimeRefresh'
 
 const TABS = [
   { id: 'dashboard', label: 'Dashboard' },
-  { id: 'add', label: 'Add / Import' },
-  { id: 'transactions', label: 'Transactions' },
-  { id: 'budget', label: 'Budget' },
+  { id: 'import', label: 'Import' },
 ]
 
 // A logged-in session's fake "@khata.local" email, shown back as the plain
@@ -26,9 +21,8 @@ function App() {
   const [categories, setCategories] = useState([])
   const [error, setError] = useState(null)
   const [tab, setTab] = useState('dashboard')
-  const [entryMode, setEntryMode] = useState('manual') // 'manual' | 'import', within the Add / Import tab
-  // Bumped whenever transaction data changes, so <Dashboard> and
-  // <Transactions> (which each load their own data) refetch.
+  // Bumped whenever transaction data changes, so <Dashboard> (which loads
+  // its own data) refetches.
   const [dataVersion, setDataVersion] = useState(0)
   const refresh = () => {
     setDataVersion((v) => v + 1)
@@ -112,51 +106,16 @@ function App() {
 
       {tab === 'dashboard' && <Dashboard key={dataVersion} />}
 
-      {tab === 'add' && (
+      {tab === 'import' && (
         <section className="card">
-          <div className="mode-toggle">
-            <button
-              type="button"
-              className={entryMode === 'manual' ? 'mode-tab active' : 'mode-tab'}
-              onClick={() => setEntryMode('manual')}
-            >
-              Add an expense
-            </button>
-            <button
-              type="button"
-              className={entryMode === 'import' ? 'mode-tab active' : 'mode-tab'}
-              onClick={() => setEntryMode('import')}
-            >
-              Import a statement
-            </button>
-          </div>
-
-          {entryMode === 'manual' ? (
-            <TransactionForm categories={categories} paidBy={usernameFromEmail(session.user.email)} onAdded={refresh} />
-          ) : (
-            <StatementImport
-              categories={categories}
-              paidBy={usernameFromEmail(session.user.email)}
-              onImported={() => {
-                refresh()
-                setEntryMode('manual')
-              }}
-            />
-          )}
-        </section>
-      )}
-
-      {tab === 'transactions' && (
-        <section className="card">
-          <h2>Transactions</h2>
-          <Transactions key={dataVersion} categories={categories} onChanged={refresh} />
-        </section>
-      )}
-
-      {tab === 'budget' && (
-        <section className="card">
-          <h2>Budget</h2>
-          <Budget key={dataVersion} categories={categories} userId={session.user.id} />
+          <StatementImport
+            categories={categories}
+            paidBy={usernameFromEmail(session.user.email)}
+            onImported={() => {
+              refresh()
+              setTab('dashboard')
+            }}
+          />
         </section>
       )}
     </>

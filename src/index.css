@@ -699,101 +699,11 @@ body {
   flex: 1;
 }
 
-.rule-remove {
-  background: none;
-  border: none;
-  color: var(--ink-faint);
-  cursor: pointer;
-  font-size: 13px;
-  padding: 4px;
-}
-
-.rule-remove:hover {
-  color: var(--red);
-}
-
-/* Budget tab */
-
-.budget-controls {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 14px;
-  margin-bottom: 18px;
-}
-
-.budget-controls .field {
-  display: grid;
-  gap: 6px;
-}
-
-.budget-controls label {
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-  color: var(--ink-faint);
-}
-
-.budget-controls input {
-  font: inherit;
-  color: var(--ink);
-  background: var(--paper);
-  border: 1px solid var(--line-strong);
-  border-radius: 6px;
-  padding: 8px 10px;
-}
-
-.budget-salary-row {
-  display: flex;
-  align-items: flex-end;
-  gap: 12px;
-  margin-bottom: 20px;
-}
-
-.budget-salary-row .field {
-  display: grid;
-  gap: 6px;
-}
-
-.budget-salary-row label {
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-  color: var(--ink-faint);
-}
-
-.budget-salary-row input {
-  font: inherit;
-  color: var(--ink);
-  background: var(--paper);
-  border: 1px solid var(--line-strong);
-  border-radius: 6px;
-  padding: 10px 12px;
-  width: 200px;
-}
-
+/* A note-styled line reused by Auth.jsx for its own inline info message —
+   the name is a holdover from the removed Budget tab, kept as-is since
+   renaming it isn't worth the churn for one still-live rule. */
 .budget-saved-note {
   font-size: 12px;
   color: var(--teal);
   padding-bottom: 12px;
-}
-
-.budget-stat-row {
-  margin-bottom: 14px;
-}
-
-.stat-negative {
-  color: var(--red) !important;
-}
-
-.budget-table input[type='number'] {
-  font: inherit;
-  font-size: 13px;
-  color: var(--ink);
-  background: var(--paper);
-  border: 1px solid var(--line-strong);
-  border-radius: 6px;
-  padding: 4px 6px;
-  width: 100px;
 }

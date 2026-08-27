@@ -53,50 +53,27 @@ create index if not exists transactions_user_idx on transactions (user_id);
 -- drops that table; harmless since nothing else references it.
 drop table if exists category_rules;
 
--- Salary budgeting: each login's own monthly salary and how much of it
--- they're allocating to each category. Private per login — keyed by
--- user_id + month, not by typed-in name.
+-- Budget tracking (the salaries + budget_allocations tables, and the
+-- Budget tab that read/wrote them) has been removed from the app — Khata
+-- is now Dashboard + Import only. This file no longer creates those two
+-- tables. On purpose it does NOT drop them either: if you'd already
+-- entered a salary or a budget allocation, that's real data this migration
+-- has no business deciding to delete. They're simply orphaned — nothing in
+-- the app queries them anymore. If you're sure you never put anything
+-- meaningful into them, you can drop them yourself:
 --
--- These two tables replace an earlier version keyed by a typed-in "person"
--- name instead of a real login. Dropped and recreated (not altered) since
--- they were only just added and, as of this migration, nothing has been
--- entered into them yet — if that's no longer true for you, stop here and
--- ask for a non-destructive version instead of running this file.
-drop table if exists budget_allocations;
-drop table if exists salaries;
-
-create table if not exists salaries (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
-  month date not null, -- always the 1st of the month, e.g. 2026-08-01
-  amount numeric(12, 2) not null check (amount >= 0),
-  created_at timestamptz not null default now(),
-  unique (user_id, month)
-);
-
-create table if not exists budget_allocations (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
-  month date not null,
-  category_id uuid not null references categories(id) on delete cascade,
-  amount numeric(12, 2) not null check (amount >= 0),
-  created_at timestamptz not null default now(),
-  unique (user_id, month, category_id)
-);
-
-create index if not exists budget_allocations_user_month_idx on budget_allocations (user_id, month);
+--   drop table if exists budget_allocations;
+--   drop table if exists salaries;
 
 -- Row Level Security. categories is shared reference data — any logged-in
 -- user (either of you) can read and create rows in it (that's how the
 -- category list "builds itself"), but you must be logged in at all.
--- transactions, salaries, and budget_allocations are private: each policy's
--- "using / with check (auth.uid() = user_id)" means a query can only ever
--- see or write its own rows — Postgres enforces this on every query, so
--- the app doesn't have to remember to filter.
+-- transactions is private: the policy's "using / with check (auth.uid() =
+-- user_id)" means a query can only ever see or write its own rows —
+-- Postgres enforces this on every query, so the app doesn't have to
+-- remember to filter.
 alter table categories enable row level security;
 alter table transactions enable row level security;
-alter table salaries enable row level security;
-alter table budget_allocations enable row level security;
 
 drop policy if exists "anon full access" on categories;
 drop policy if exists "authenticated full access" on categories;
@@ -108,34 +85,14 @@ drop policy if exists "own rows only" on transactions;
 create policy "own rows only" on transactions
   for all to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
-drop policy if exists "anon full access" on salaries;
-drop policy if exists "own rows only" on salaries;
-create policy "own rows only" on salaries
-  for all to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
-
-drop policy if exists "anon full access" on budget_allocations;
-drop policy if exists "own rows only" on budget_allocations;
-create policy "own rows only" on budget_allocations
-  for all to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
-
--- Realtime: lets the app pick up changes live (e.g. adding an expense on
--- your phone shows up on your laptop without a manual refresh) instead of
--- only refreshing right after your own edits. Still scoped by the RLS
+-- Realtime: lets the app pick up changes live (e.g. importing a statement
+-- on your phone shows up on your laptop without a manual refresh) instead
+-- of only refreshing right after your own edits. Still scoped by the RLS
 -- policies above — a realtime event never carries a row you couldn't
 -- otherwise SELECT. "ADD TABLE" errors if run twice, so each is wrapped to
 -- stay safe to re-run.
 do $$ begin
   alter publication supabase_realtime add table transactions;
-exception when duplicate_object then null;
-end $$;
-
-do $$ begin
-  alter publication supabase_realtime add table salaries;
-exception when duplicate_object then null;
-end $$;
-
-do $$ begin
-  alter publication supabase_realtime add table budget_allocations;
 exception when duplicate_object then null;
 end $$;
 
