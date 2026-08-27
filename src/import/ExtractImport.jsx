@@ -94,6 +94,12 @@ export default function ExtractImport({ kind, categories, paidBy, onBack, onImpo
   const [errorMsg, setErrorMsg] = useState('')
   const [passwordError, setPasswordError] = useState('')
   const [password, setPassword] = useState('')
+  // A password typed upfront, before even choosing the file — most people
+  // already know their statement's password (PAN, DOB, a bank convention)
+  // without needing to fail once first. Still entirely optional: leaving
+  // this blank falls through to the same reactive "needs a password" step
+  // as before if the file turns out to need one.
+  const [presetPassword, setPresetPassword] = useState('')
   const [pendingFile, setPendingFile] = useState(null)
   const [rows, setRows] = useState([])
   const [accountGuess, setAccountGuess] = useState({ accountType: null, accountName: null })
@@ -204,12 +210,27 @@ export default function ExtractImport({ kind, categories, paidBy, onBack, onImpo
     <div>
       <p className="import-hint">{config.hint}</p>
 
+      {kind === 'pdf' && (
+        <div className="tx-form">
+          <div className="field">
+            <label htmlFor="preset-pdf-password">PDF password (optional, if you already know it)</label>
+            <input
+              id="preset-pdf-password"
+              type="password"
+              placeholder="Leave blank and you'll be asked if it turns out to be needed"
+              value={presetPassword}
+              onChange={(e) => setPresetPassword(e.target.value)}
+            />
+          </div>
+        </div>
+      )}
+
       <input
         ref={fileInput}
         type="file"
         accept={config.accept}
         style={{ display: 'none' }}
-        onChange={(e) => e.target.files[0] && handleFile(e.target.files[0])}
+        onChange={(e) => e.target.files[0] && handleFile(e.target.files[0], kind === 'pdf' ? presetPassword : undefined)}
       />
 
       <div className="import-actions">

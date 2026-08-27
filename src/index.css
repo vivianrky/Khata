@@ -263,6 +263,40 @@ body {
   color: var(--ink-soft);
 }
 
+/* Insights card toggle ("All cards" / per-card) */
+
+.insight-account-toggle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.insight-account-toggle-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-faint);
+  margin-right: 2px;
+}
+
+.insight-account-btn {
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  background: var(--paper);
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+.insight-account-btn.active {
+  color: #fff;
+  background: var(--teal);
+  border-color: var(--teal);
+}
+
 /* Where-to-cut priority table */
 
 .priority-dot {

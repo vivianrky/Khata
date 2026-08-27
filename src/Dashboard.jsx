@@ -70,6 +70,15 @@ function classifyCategory(name) {
   return 'unknown'
 }
 
+const ACCOUNT_TYPE_LABELS = { credit_card: 'Credit Card', debit_card: 'Debit Card', upi: 'UPI' }
+
+// The account_name typed/guessed at import time ("HDFC •• 1234") is the more
+// specific label when it's there; falling back to a humanized account_type
+// still lets transactions with no name group together instead of scattering.
+function accountLabel(t) {
+  return t.account_name || ACCOUNT_TYPE_LABELS[t.account_type] || 'Unspecified'
+}
+
 const fmtINR = (n) =>
   Math.round(n).toLocaleString('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 })
 
@@ -90,6 +99,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [period, setPeriod] = useState('all')
+  const [insightAccount, setInsightAccount] = useState('all') // 'all' or an accountLabel() value
   const [isDark, setIsDark] = useState(
     () => window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false,
   )
@@ -107,7 +117,7 @@ export default function Dashboard() {
   const load = useCallback(async () => {
     const { data, error } = await supabase
       .from('transactions')
-      .select('amount, transaction_date, note, categories(name)')
+      .select('amount, transaction_date, note, account_type, account_name, categories(name)')
       .order('transaction_date', { ascending: true })
 
     if (error) {
@@ -166,12 +176,48 @@ export default function Dashboard() {
 
   const topCategory = byCategory[0]
 
+  // Every distinct card/account showing up in the selected period, with its
+  // total — feeds both the toggle's labels and the "only show it if there's
+  // actually more than one card" check below.
+  const accountTotals = useMemo(() => {
+    const map = new Map()
+    for (const t of filtered) {
+      const name = accountLabel(t)
+      map.set(name, (map.get(name) || 0) + Number(t.amount))
+    }
+    return Array.from(map.entries())
+      .map(([name, total]) => ({ name, total }))
+      .sort((a, b) => b.total - a.total)
+  }, [filtered])
+
+  // If the selected card drops out of the period (e.g. you switch months to
+  // one it has no transactions in), fall back to "all" rather than showing
+  // an empty insights section with no obvious explanation.
+  useEffect(() => {
+    if (insightAccount !== 'all' && !accountTotals.some((a) => a.name === insightAccount)) {
+      setInsightAccount('all')
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accountTotals])
+
+  const insightFiltered = useMemo(() => {
+    if (insightAccount === 'all') return filtered
+    return filtered.filter((t) => accountLabel(t) === insightAccount)
+  }, [filtered, insightAccount])
+
+  const insightTotalSpent = useMemo(
+    () => insightFiltered.reduce((sum, t) => sum + Number(t.amount), 0),
+    [insightFiltered],
+  )
+
   // Same grouping as byCategory, but keeping each transaction (not just the
   // category total) so the breakdown can list what actually makes up each
   // category — "Swiggy — ₹1,230", not just "Food & Drinks — ₹10,251".
+  // Scoped to insightFiltered (respects the card toggle above) rather than
+  // filtered (which only respects the period).
   const categoryBreakdown = useMemo(() => {
     const map = new Map()
-    for (const t of filtered) {
+    for (const t of insightFiltered) {
       const name = t.categories?.name ?? 'Uncategorized'
       if (!map.has(name)) map.set(name, { name, total: 0, items: [] })
       const bucket = map.get(name)
@@ -181,7 +227,7 @@ export default function Dashboard() {
     return Array.from(map.values())
       .map((c) => ({ ...c, items: c.items.sort((a, b) => b.amount - a.amount) }))
       .sort((a, b) => b.total - a.total)
-  }, [filtered])
+  }, [insightFiltered])
 
   const shownBreakdown = categoryBreakdown.slice(0, INSIGHT_CATEGORY_LIMIT)
   const shownBreakdownTotal = shownBreakdown.reduce((sum, c) => sum + c.total, 0)
@@ -363,9 +409,32 @@ export default function Dashboard() {
         </ResponsiveContainer>
       </div>
 
+      {(shownBreakdown.length > 0 || cutPlan.length > 0) && accountTotals.length > 1 && (
+        <div className="chart-block insight-account-toggle">
+          <span className="insight-account-toggle-label">Card:</span>
+          <button
+            type="button"
+            className={insightAccount === 'all' ? 'insight-account-btn active' : 'insight-account-btn'}
+            onClick={() => setInsightAccount('all')}
+          >
+            All cards
+          </button>
+          {accountTotals.map((a) => (
+            <button
+              key={a.name}
+              type="button"
+              className={insightAccount === a.name ? 'insight-account-btn active' : 'insight-account-btn'}
+              onClick={() => setInsightAccount(a.name)}
+            >
+              {a.name}
+            </button>
+          ))}
+        </div>
+      )}
+
       {shownBreakdown.length > 0 && (
         <div className="chart-block">
-          <h3>Spending breakdown</h3>
+          <h3>Spending breakdown{insightAccount !== 'all' ? ` — ${insightAccount}` : ''}</h3>
           <div className="insight-list">
             {shownBreakdown.map((c) => (
               <div key={c.name}>
@@ -390,12 +459,12 @@ export default function Dashboard() {
           <p className="insight-summary">
             Total spending shown: <strong>{fmtINR(shownBreakdownTotal)}</strong>. Your{' '}
             <strong>{shownBreakdown[0].name}</strong> spending is the largest category, at about{' '}
-            <strong>{((shownBreakdown[0].total / totalSpent) * 100).toFixed(1)}%</strong> of these
-            transactions
+            <strong>{((shownBreakdown[0].total / insightTotalSpent) * 100).toFixed(1)}%</strong> of
+            {insightAccount === 'all' ? ' these transactions' : ` ${insightAccount}'s transactions`}
             {shownBreakdown[1] && (
               <>
                 , while <strong>{shownBreakdown[1].name}</strong> is about{' '}
-                <strong>{((shownBreakdown[1].total / totalSpent) * 100).toFixed(1)}%</strong>.
+                <strong>{((shownBreakdown[1].total / insightTotalSpent) * 100).toFixed(1)}%</strong>.
               </>
             )}
           </p>
@@ -404,7 +473,7 @@ export default function Dashboard() {
 
       {cutPlan.length > 0 && (
         <div className="chart-block">
-          <h3>Where I'd cut first</h3>
+          <h3>Where I'd cut first{insightAccount !== 'all' ? ` — ${insightAccount}` : ''}</h3>
           <p className="import-hint">
             A rough, keyword-based read of your categories — not financial advice, just a starting
             point to look at.
