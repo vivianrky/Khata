@@ -101,12 +101,31 @@ const DATE_PATTERNS = [
 ]
 const AMOUNT_PATTERN = /(?:₹|rs\.?|inr)?\s*(-?\(?\d[\d,]*\.\d{1,2}\)?|-?\(?\d[\d,]{2,}\)?)\s*(cr|dr)?/gi
 
+// Several card statements (HDFC's included) print a "Domestic Transactions"
+// table and a separate "International Transactions" one below it — the
+// international one is in a different currency and isn't something this
+// app can meaningfully mix into an INR total, so when a statement has both,
+// this narrows the text down to just the domestic section before any line
+// scanning happens. A statement with no such heading (most CSV/Excel-style
+// or single-currency PDFs) is returned unchanged.
+function scopeToDomesticTransactions(text) {
+  const start = text.match(/domestic\s+transactions/i)
+  if (!start) return text
+  const afterStart = start.index + start[0].length
+  const rest = text.slice(afterStart)
+  const end = rest.match(
+    /international\s+transactions|rewards?\s+(?:program|points)\s+summary|eligible for emi|\*{2}\s*end of statement\s*\*{2}/i,
+  )
+  return text.slice(start.index, end ? afterStart + end.index : text.length)
+}
+
 // Best-effort line parser for text pulled from a PDF or a photo — there are
 // no fixed columns to rely on, so it hunts for a date and an amount per
 // line and treats what's left as the description. This is never fully
 // reliable (OCR especially), which is exactly why the review table always
 // comes next and nothing is saved without you looking it over first.
-export function parseStatementText(text) {
+export function parseStatementText(rawText) {
+  const text = scopeToDomesticTransactions(rawText)
   const lines = text
     .split('\n')
     .map((l) => l.trim())
@@ -208,6 +227,29 @@ const BANK_NAMES = [
   'idbi', 'central bank', 'indian bank', 'uco bank', 'karnataka bank',
 ]
 
+// Statement letterheads almost always name the actual card product
+// somewhere in a title like "Millennia Credit Card Statement" or "Axis
+// Bank MY Zone Card Monthly Statement" — pulling that out gives a much
+// more useful label ("HDFC Millennia") than the bank name alone would
+// ("HDFC" — true of every card on that bank).
+function guessCardProductName(text) {
+  const m = (text || '').match(
+    /\b([A-Za-z][A-Za-z0-9&'.\s]{1,40}?)\s+(?:credit\s*card|debit\s*card|card)\s+(?:monthly\s+)?statement\b/i,
+  )
+  if (!m) return null
+  let name = m[1].trim()
+
+  // The title often leads with the bank's own name ("Axis Bank MY Zone
+  // Card...") — strip that off so what's left is just the product ("MY
+  // Zone"), not a redundant repeat of the bank already captured above.
+  const lower = name.toLowerCase()
+  const leadingBank = [...BANK_NAMES].sort((a, b) => b.length - a.length).find((b) => lower.startsWith(b))
+  if (leadingBank) name = name.slice(leadingBank.length).trim()
+  name = name.replace(/^bank\b/i, '').trim()
+
+  return name && name.length <= 30 ? name : null
+}
+
 // Best-effort guess at which account a statement/photo belongs to, from
 // whatever text is available (extracted PDF/OCR text, or a spreadsheet's
 // filename + a sample of its own content). Never blocks anything — the
@@ -222,6 +264,7 @@ export function guessAccountInfo(text) {
   else if (/\bdebit\s*card\b/.test(t)) accountType = 'debit_card'
 
   const bank = BANK_NAMES.find((b) => t.includes(b))
+  const cardProduct = guessCardProductName(text)
 
   // A masked account/card number: "XX 9850", "XXXX-XXXX-XXXX-1234",
   // "**** 1234" — statements almost always show one of these instead of
@@ -237,6 +280,7 @@ export function guessAccountInfo(text) {
         .join(' '),
     )
   }
+  if (cardProduct) parts.push(cardProduct)
   if (maskedMatch) parts.push(maskedMatch[0].replace(/\s+/g, ' ').trim())
 
   return {
