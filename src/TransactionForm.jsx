@@ -10,15 +10,16 @@ const ACCOUNT_TYPES = [
 const today = () => new Date().toISOString().slice(0, 10)
 
 // A form for logging one expense by hand. `categories` is passed in from
-// App.jsx (loaded once from Supabase); `onAdded` is called after a
-// successful save so App.jsx can refresh whatever list/chart is showing.
-export default function TransactionForm({ categories, onAdded }) {
+// App.jsx (loaded once from Supabase); `paidBy` is your logged-in username —
+// this data is private to your account, so there's no one else it could be;
+// `onAdded` is called after a successful save so App.jsx can refresh
+// whatever list/chart is showing.
+export default function TransactionForm({ categories, paidBy, onAdded }) {
   const [amount, setAmount] = useState('')
   const [date, setDate] = useState(today())
   const [accountType, setAccountType] = useState('upi')
   const [accountName, setAccountName] = useState('')
   const [categoryId, setCategoryId] = useState('')
-  const [paidBy, setPaidBy] = useState('')
   const [note, setNote] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
@@ -122,18 +123,6 @@ export default function TransactionForm({ categories, onAdded }) {
             </option>
           ))}
         </select>
-      </div>
-
-      <div className="field">
-        <label htmlFor="tx-paid-by">Paid by</label>
-        <input
-          id="tx-paid-by"
-          type="text"
-          required
-          placeholder="Your name"
-          value={paidBy}
-          onChange={(e) => setPaidBy(e.target.value)}
-        />
       </div>
 
       <div className="field">

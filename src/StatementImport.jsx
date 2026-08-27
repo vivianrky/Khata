@@ -53,7 +53,7 @@ function guessColumn(headers, patterns) {
   return headers.find((h) => patterns.some((p) => h.toLowerCase().includes(p))) || ''
 }
 
-export default function StatementImport({ categories, onImported }) {
+export default function StatementImport({ categories, paidBy, onImported }) {
   const [step, setStep] = useState(1) // 1 = choose file, 2 = map columns, 3 = review
   const [fileName, setFileName] = useState('')
   const [headers, setHeaders] = useState([])
@@ -61,7 +61,6 @@ export default function StatementImport({ categories, onImported }) {
   const [map, setMap] = useState({ date: '', description: '', amount: '' })
   const [accountType, setAccountType] = useState('upi')
   const [accountName, setAccountName] = useState('')
-  const [paidBy, setPaidBy] = useState('')
   const [rows, setRows] = useState([]) // built once we reach step 3, editable there
   const [parseError, setParseError] = useState('')
   const [saveError, setSaveError] = useState(null)
@@ -253,18 +252,6 @@ export default function StatementImport({ categories, onImported }) {
               placeholder="e.g. HDFC Credit Card"
               value={accountName}
               onChange={(e) => setAccountName(e.target.value)}
-            />
-          </div>
-
-          <div className="field">
-            <label htmlFor="map-paid-by">Paid by</label>
-            <input
-              id="map-paid-by"
-              type="text"
-              required
-              placeholder="Your name"
-              value={paidBy}
-              onChange={(e) => setPaidBy(e.target.value)}
             />
           </div>
 

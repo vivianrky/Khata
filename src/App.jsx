@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from './supabaseClient'
+import Auth from './Auth'
 import Dashboard from './Dashboard'
 import TransactionForm from './TransactionForm'
 import StatementImport from './StatementImport'
@@ -15,7 +16,14 @@ const TABS = [
   { id: 'rules', label: 'Rules' },
 ]
 
+// A logged-in session's fake "@khata.local" email, shown back as the plain
+// username people actually typed in — see Auth.jsx.
+function usernameFromEmail(email) {
+  return email?.split('@')[0] ?? ''
+}
+
 function App() {
+  const [session, setSession] = useState(undefined) // undefined = still checking, null = signed out
   const [categories, setCategories] = useState([])
   const [error, setError] = useState(null)
   const [tab, setTab] = useState('dashboard')
@@ -24,6 +32,14 @@ function App() {
   // <Transactions> (which each load their own data) refetch.
   const [dataVersion, setDataVersion] = useState(0)
   const refresh = () => setDataVersion((v) => v + 1)
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => setSession(data.session))
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      setSession(newSession)
+    })
+    return () => listener.subscription.unsubscribe()
+  }, [])
 
   const loadCategories = useCallback(async () => {
     const { data, error } = await supabase.from('categories').select('id, name').order('name')
@@ -35,14 +51,41 @@ function App() {
   }, [])
 
   useEffect(() => {
-    loadCategories()
-  }, [loadCategories])
+    if (session) loadCategories()
+  }, [session, loadCategories])
+
+  if (session === undefined) {
+    return (
+      <>
+        <header className="app-header">
+          <h1>📖 Khata</h1>
+          <p>your money, entered in the book</p>
+        </header>
+        <p className="empty-state">Loading…</p>
+      </>
+    )
+  }
+
+  if (!session) {
+    return (
+      <>
+        <header className="app-header">
+          <h1>📖 Khata</h1>
+          <p>your money, entered in the book</p>
+        </header>
+        <Auth />
+      </>
+    )
+  }
 
   return (
     <>
       <header className="app-header">
         <h1>📖 Khata</h1>
         <p>your money, entered in the book</p>
+        <button type="button" className="signout-button" onClick={() => supabase.auth.signOut()}>
+          Sign out ({usernameFromEmail(session.user.email)})
+        </button>
       </header>
 
       {error && <div className="error-banner">{error}</div>}
@@ -82,10 +125,11 @@ function App() {
           </div>
 
           {entryMode === 'manual' ? (
-            <TransactionForm categories={categories} onAdded={refresh} />
+            <TransactionForm categories={categories} paidBy={usernameFromEmail(session.user.email)} onAdded={refresh} />
           ) : (
             <StatementImport
               categories={categories}
+              paidBy={usernameFromEmail(session.user.email)}
               onImported={() => {
                 refresh()
                 setEntryMode('manual')
@@ -105,7 +149,7 @@ function App() {
       {tab === 'budget' && (
         <section className="card">
           <h2>Budget</h2>
-          <Budget key={dataVersion} categories={categories} />
+          <Budget key={dataVersion} categories={categories} userId={session.user.id} />
         </section>
       )}
 
